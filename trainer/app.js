@@ -1,6 +1,6 @@
 // Мастерская Бита — тренажёр Roblox Studio для урока М1У1.
-// Глава 1: приёмы разминки (камера, формы, Move, Scale, Rotate, цвет и материал), без Anchor.
-// Глава 2 (план Б): мост падает → Anchor → заделать дыры → свой стиль → сохранение → имя острова.
+// Один путь, как в уроке: камера → мост (Anchor) → Move, Rotate, Scale на вещах мастерской → Group + Anchor → сохранение.
+// Потом по желанию ⭐ свой объект из деталей.
 import * as THREE from "three";
 import { TransformControls } from "three/addons/controls/TransformControls.js";
 import { ConvexGeometry } from "three/addons/geometries/ConvexGeometry.js";
@@ -15,13 +15,10 @@ const r2 = (v) => Math.round(v * 100) / 100;
 const params = new URLSearchParams(location.search);
 const navLang = (navigator.language || "").slice(0, 2).toLowerCase();
 let lang = LANGS.includes(params.get("lang")) ? params.get("lang") : LANGS.includes(navLang) ? navLang : "en";
-if (params.get("switch") === "0") $("lang").style.display = "none";
-// mode=wait — только глава 1 (тоггл «Пока ждёшь преподавателя»), без параметра — весь тренажёр (план Б)
-const WAIT = params.get("mode") === "wait";
 let L = T(lang);
 
-const KEY = "bitWorkshop.v1";
-let store = { done: [], stage: 0, world2: null, name: "" };
+const KEY = "bitWorkshop.v2"; // v1 — прежний квест с мостами, его прогресс не подходит
+let store = { done: [], stage: 0, own: null };
 try { Object.assign(store, JSON.parse(localStorage.getItem(KEY)) || {}); } catch (e) { /* без хранилища тоже работает */ }
 function saveStore() { try { localStorage.setItem(KEY, JSON.stringify(store)); } catch (e) { /* приватное окно */ } }
 
@@ -313,7 +310,7 @@ function placeBit(x, z, rotY = 0) {
   animators.push((t) => { b.position.y = 0.6 + Math.sin(t * 2) * 0.35; b.rotation.z = Math.sin(t * 1.3) * 0.05; });
   return b;
 }
-const calm = { holes: false, portal: false };
+const calm = { bridge: false, lamp: false, sign: false, bench: false, portal: false };
 function glitchPixels(cx, cy, cz, n = 10, spread = 2.5, key = "holes") {
   const mat = new THREE.MeshStandardMaterial({ color: "#a020ff", emissive: "#8a00ff", emissiveIntensity: 1.4 });
   for (let i = 0; i < n; i++) {
@@ -326,30 +323,35 @@ function glitchPixels(cx, cy, cz, n = 10, spread = 2.5, key = "holes") {
   }
 }
 
-// ---------- миры ----------
-function buildCh1() {
-  clearWorld();
-  world = { kind: 1, spawn: V(0, 0, 22) };
-  island(0, 0, 92, 92);
-  for (const [x, z, h] of [[-36, -34, 9], [-30, 30, 8], [35, 34, 7], [-40, 4, 10], [8, -38, 9], [38, -36, 8], [-16, -40, 7]]) tree(x, z, h);
-  const rock = new THREE.Mesh(new THREE.DodecahedronGeometry(8, 0), sm("#8a8c90", { flatShading: true }));
-  rock.position.set(22, 6, -4);
-  rock.scale.set(1.2, 1, 1);
-  addStatic(rock);
-  placeBit(-8, -6, 0.4);
-  farIsland(-140, 30, -170, 22); farIsland(160, 10, -120, 16); farIsland(40, 45, -230, 28);
-  setLook(V(0, 14, 40), V(0, 4, 0));
+// ---------- мир: Хаб, мост и мастерская Бита ----------
+// Мастерская — правый остров. Глюк сломал мост (стёр Anchored) и три вещи: у фонаря сбросил шар,
+// у указателя повернул табличку, у скамейки сжал сиденье. Светящийся контур показывает, как было.
+const LAMP = { x: 22, z: -12, ballStart: [26, 1.2, -8], ball: [22, 9.2, -12] };
+const SIGN = { x: 34, z: -12, pos: [34, 5, -11.6] };
+const BENCH = { x: 46, z: -12, start: [2, 1, 1], size: [6, 1, 2], pos: [46, 2.1, -12] };
+const OWN = { x: 50, z: 9 };
+let portalMat, portalLight;
+function ghost(shape, size, pos, rot = [0, 0, 0]) {
+  const g = new THREE.Group();
+  const fill = new THREE.Mesh(geo(shape), new THREE.MeshBasicMaterial({ color: 0x2fd9ff, transparent: true, opacity: 0.4, depthWrite: false, toneMapped: false }));
+  g.add(fill);
+  const wire = shape === "Sphere" ? new THREE.WireframeGeometry(new THREE.SphereGeometry(0.5, 10, 6)) : EDGE_GEO;
+  g.add(new THREE.LineSegments(wire, new THREE.LineBasicMaterial({ color: 0x0a7fc4, transparent: true, opacity: 0.85 })));
+  g.position.fromArray(pos);
+  g.rotation.set(rot[0] * DEG, rot[1] * DEG, rot[2] * DEG);
+  g.scale.fromArray(size);
+  addStatic(g, false);
+  animators.push((t) => { fill.material.opacity = 0.34 + Math.sin(t * 3) * 0.1; });
+  return g;
 }
-const HOLES = [-4, 4]; // каждая дыра — две «съеденные» доски
-function bridgeParts() {
-  for (let i = 0; i < 10; i++) {
-    const x = -9 + i * 2;
-    if (HOLES.some((h) => Math.abs(x - h) < 1.5)) continue;
-    addPart({ name: "Plank", model: "Bridge", size: [1.9, 0.6, 6], pos: [x, -0.3, 0], color: "#9c6a3c", material: "WoodPlanks" });
-  }
+function pad(x, z, r = 4.2, color = "#8d939b") {
+  const m = new THREE.Mesh(new THREE.CylinderGeometry(r, r, 0.12, 40), sm(color, { roughness: 0.9 }));
+  m.position.set(x, 0.06, z);
+  m.receiveShadow = true;
+  addStatic(m, false);
 }
-let signCanvas, signTex, portalMat, portalLight;
-function buildCh2(fresh) {
+// stage — номер этапа: всё, что чинили раньше, уже починено
+function buildWorld(stage) {
   clearWorld();
   world = { kind: 2, spawn: V(-24, 0, 0) };
   island(-40, 0, 60, 44);
@@ -359,22 +361,12 @@ function buildCh2(fresh) {
     post.position.set(s * 10.6, 1.75, z);
     addStatic(post);
   }
-  for (const hx of HOLES) glitchPixels(hx, 0.4, 0, 9, 3);
-  // арка портала с табличкой
+  // арка портала на острове Хаба
   const stone = sm("#9aa0a8", { flatShading: true });
   for (const z of [-6, 6]) { const pl = new THREE.Mesh(new THREE.BoxGeometry(2, 11, 2), stone); pl.position.set(-52, 5.5, z); addStatic(pl); }
   const beam = new THREE.Mesh(new THREE.BoxGeometry(2.4, 2.2, 14), stone);
   beam.position.set(-52, 12, 0);
   addStatic(beam);
-  signCanvas = document.createElement("canvas");
-  signCanvas.width = 512; signCanvas.height = 80;
-  signTex = new THREE.CanvasTexture(signCanvas);
-  signTex.colorSpace = THREE.SRGBColorSpace;
-  const sign = new THREE.Mesh(new THREE.PlaneGeometry(12, 1.9), new THREE.MeshBasicMaterial({ map: signTex, transparent: true }));
-  sign.position.set(-50.75, 12, 0);
-  sign.rotation.y = Math.PI / 2;
-  addStatic(sign, false);
-  drawSign(store.name);
   portalMat = new THREE.MeshStandardMaterial({ color: "#241a3a", emissive: "#2a0a55", emissiveIntensity: 0.4, transparent: true, opacity: 0.85, side: THREE.DoubleSide });
   const portal = new THREE.Mesh(new THREE.PlaneGeometry(10, 10), portalMat);
   portal.position.set(-52, 5.5, 0);
@@ -384,52 +376,66 @@ function buildCh2(fresh) {
   portalLight.position.set(-49, 6, 0);
   scene.add(portalLight);
   decor.push(portalLight);
-  glitchPixels(-51, 4, 0, 8, 4, "portal");
-  calm.portal = false;
-  // лагерь Бита
-  placeBit(24, 5, -Math.PI / 2);
-  const fire = new THREE.Mesh(new THREE.ConeGeometry(0.9, 2, 7), new THREE.MeshStandardMaterial({ color: "#ff8a1f", emissive: "#ff5a00", emissiveIntensity: 2 }));
-  fire.position.set(28, 1, -3);
-  addStatic(fire, false);
-  const fl = new THREE.PointLight(0xff8a3c, 30, 25);
-  fl.position.set(28, 3, -3);
-  scene.add(fl); decor.push(fl);
-  animators.push((t) => { fire.scale.y = 1 + Math.sin(t * 9) * 0.15; fl.intensity = 26 + Math.sin(t * 13) * 5; });
-  for (const [x, z, h] of [[-58, -16, 9], [-50, 15, 8], [-20, -17, 7], [55, 16, 9], [48, -17, 8], [62, 0, 10], [35, 17, 7]]) tree(x, z, h);
+  // мастерская
+  for (const o of [LAMP, SIGN, BENCH]) pad(o.x, o.z);
+  pad(OWN.x, OWN.z, 6, "#a4a9b0");
+  const crate = new THREE.Mesh(new THREE.BoxGeometry(3, 2.4, 3), makeMat({ color: "#9c6a3c", material: "WoodPlanks", transparency: 0, size: [3, 2.4, 3] }));
+  crate.position.set(OWN.x + 8, 1.2, OWN.z + 1);
+  addStatic(crate);
+  const rock = new THREE.Mesh(new THREE.DodecahedronGeometry(6, 0), sm("#8a8c90", { flatShading: true }));
+  rock.position.set(60, 4.5, -8);
+  addStatic(rock);
+  placeBit(30, 7, -Math.PI / 2);
+  for (const [x, z, h] of [[-58, -16, 9], [-50, 15, 8], [-20, -17, 7], [64, 17, 8], [16, 18, 7], [67, -19, 8], [14, -19, 7]]) tree(x, z, h);
   farIsland(-150, 25, -180, 24); farIsland(170, 15, -140, 18); farIsland(30, 50, -250, 30); farIsland(-60, -10, 190, 18);
-  if (!fresh && store.world2) for (const d of store.world2) addPart(d);
-  else bridgeParts();
-  setLook(V(-30, 15, 26), V(0, 0, 0));
+  // мост
+  for (let i = 0; i < 10; i++) addPart({ name: "Plank", model: "Bridge", size: [1.9, 0.6, 6], pos: [-9 + i * 2, -0.3, 0], color: "#9c6a3c", material: "WoodPlanks", anchored: stage > 2 });
+  // фонарь
+  const W = { folder: "Workshop" };
+  addPart({ ...W, name: "Base", size: [3, 1, 3], pos: [LAMP.x, 0.5, LAMP.z], color: "#3b3b40", material: "Basalt", anchored: true, locked: true, tag: "lampBase", model: stage > 6 ? "Model" : null });
+  addPart({ ...W, name: "Post", size: [1, 7, 1], pos: [LAMP.x, 4.5, LAMP.z], color: "#3b3b40", material: "Basalt", anchored: true, locked: true, tag: "lampPost", model: stage > 6 ? "Model" : null });
+  addPart({ ...W, name: "Lamp", shape: "Sphere", size: [2.4, 2.4, 2.4], pos: stage > 3 ? LAMP.ball : LAMP.ballStart, color: "#ffd84a", material: "Neon", anchored: stage > 6, tag: "lampBall", model: stage > 6 ? "Model" : null });
+  ghost("Sphere", [2.4, 2.4, 2.4], LAMP.ball);
+  // указатель
+  addPart({ ...W, name: "Post", size: [0.8, 6, 0.8], pos: [SIGN.x, 3, SIGN.z], color: "#7b4f2c", material: "WoodPlanks", anchored: true, locked: true });
+  addPart({ ...W, name: "Sign", size: [4, 1.6, 0.4], pos: SIGN.pos, rot: stage > 4 ? [0, 0, 0] : [90, 0, 0], color: "#d9b26a", material: "WoodPlanks", anchored: true, tag: "sign" });
+  ghost("Block", [4, 1.6, 0.4], SIGN.pos);
+  // скамейка
+  for (const dx of [-2.2, 2.2]) addPart({ ...W, name: "Leg", size: [0.8, 1.6, 1.8], pos: [BENCH.x + dx, 0.8, BENCH.z], color: "#5a3a22", material: "WoodPlanks", anchored: true, locked: true });
+  addPart({ ...W, name: "Seat", size: stage > 5 ? BENCH.size : BENCH.start, pos: BENCH.pos, color: "#b07a44", material: "WoodPlanks", anchored: true, tag: "seat" });
+  ghost("Block", BENCH.size, BENCH.pos);
+  // звезда за скалой — только для этапа с камерой
+  if (stage === 0) {
+    const s = addPart({ name: "Star", shape: "Star", size: [3, 3, 3], pos: [64, 4, -15], rot: [0, -60, 0], color: "#ffd84a", material: "Neon", anchored: true, locked: true, tag: "star" });
+    animators.push((t) => { s.mesh.rotation.y = t; });
+  }
+  if (stage === 8 && store.own) for (const d of store.own) addPart(d);
+  glitchPixels(0, 0.4, 0, 9, 4, "bridge");
+  glitchPixels(LAMP.x, 6, LAMP.z, 7, 2, "lamp");
+  glitchPixels(SIGN.x, 4.5, SIGN.z, 7, 2, "sign");
+  glitchPixels(BENCH.x, 2, BENCH.z, 7, 2, "bench");
+  updateCalm();
 }
-function drawSign(name) {
-  if (!signCanvas) return;
-  const g = signCanvas.getContext("2d");
-  g.clearRect(0, 0, 512, 80);
-  if (!name) return;
-  g.fillStyle = "rgba(40,30,20,.85)";
-  g.fillRect(0, 0, 512, 80);
-  g.fillStyle = "#ffe7a8";
-  g.font = "bold 44px system-ui, sans-serif";
-  g.textAlign = "center";
-  g.textBaseline = "middle";
-  g.fillText(name, 256, 42, 490);
-  signTex.needsUpdate = true;
-}
+const near = (a, b, tol) => a.every((v, i) => Math.abs(v - b[i]) <= tol);
+const fixed = {
+  bridge: () => parts.some((p) => p.model === "Bridge") && parts.filter((p) => p.model === "Bridge").every((p) => p.anchored),
+  lamp: () => { const b = byTag("lampBall"); return !!b && near(b.pos, LAMP.ball, 1.1); },
+  sign: () => {
+    const s = byTag("sign"); if (!s) return false;
+    const up = V(0, 1, 0).applyQuaternion(s.mesh.quaternion), fw = V(0, 0, 1).applyQuaternion(s.mesh.quaternion);
+    return Math.abs(up.y) > 0.96 && Math.abs(fw.z) > 0.96 && near(s.pos, SIGN.pos, 1.1);
+  },
+  bench: () => { const s = byTag("seat"); return !!s && near(s.size, BENCH.size, 0.6) && near(s.pos, BENCH.pos, 1.1); },
+};
+function updateCalm() { for (const k of ["bridge", "lamp", "sign", "bench"]) calm[k] = fixed[k](); }
 function lightPortal() {
   calm.portal = true;
-  const sat = (h) => { const o = {}; new THREE.Color(h).getHSL(o, THREE.SRGBColorSpace); return o.s; };
-  const cols = [...new Set(parts.filter((p) => p.user).map((p) => p.color))].sort((x, y) => sat(y) - sat(x));
-  const c = new THREE.Color(cols[0] || "#7ad7ff");
-  portalMat.emissive = c;
-  portalMat.color = c.clone().multiplyScalar(0.6);
+  portalMat.emissive.set("#5ff3ff");
+  portalMat.color.set("#2a6f80");
   portalMat.emissiveIntensity = 1.4;
-  portalLight.color = c;
+  portalLight.color.set("#5ff3ff");
   portalLight.intensity = 60;
-  let i = 0;
-  animators.push((t) => {
-    if (cols.length > 1 && Math.floor(t * 1.2) !== i) { i = Math.floor(t * 1.2); portalMat.emissive.set(cols[i % cols.length]); portalLight.color.set(cols[i % cols.length]); }
-    portalMat.emissiveIntensity = 1.2 + Math.sin(t * 3) * 0.3;
-  });
+  animators.push((t) => { portalMat.emissiveIntensity = 1.2 + Math.sin(t * 3) * 0.3; });
 }
 
 // ---------- камера в режиме редактора ----------
@@ -606,15 +612,28 @@ function duplicateSel() {
   refreshSel();
   onChange();
 }
+let modelN = 0;
+function groupSel() {
+  if (playing) return;
+  if (selected.length < 2) { toast(L.q.groupNeed); return; }
+  pushHistory();
+  const used = new Set(parts.map((p) => p.model));
+  let m = "Model";
+  while (used.has(m)) m = "Model" + ++modelN;
+  const folder = selected.find((p) => p.folder)?.folder || null;
+  for (const p of selected) { p.model = m; p.folder = folder; }
+  refreshSel();
+  onChange();
+}
 let saveTimer = 0;
 function onChange() {
   renderExplorer();
   renderProps();
   renderRibbonState();
-  if (world.kind === 2) {
-    calm.holes = holesCovered() === 2;
+  updateCalm();
+  if (cur === MAIN) {
     clearTimeout(saveTimer);
-    saveTimer = setTimeout(() => { if (!playing) { store.world2 = parts.map(ser); saveStore(); } }, 300);
+    saveTimer = setTimeout(() => { if (!playing) { store.own = userParts().map(ser); saveStore(); } }, 300);
   }
   emit("change");
 }
@@ -663,7 +682,7 @@ function spawnChar() {
   for (const m of [legL, legR, armL, armR]) m.geometry.translate(0, -0.9, 0), (m.position.y += 0.9);
   g.position.copy(world.spawn);
   scene.add(g);
-  camYaw = world.kind === 2 ? -Math.PI / 2 : 0;
+  camYaw = -Math.PI / 2;
   g.rotation.y = camYaw + Math.PI;
   char = { group: g, vy: 0, grounded: false, legs: [legL, legR], arms: [armL, armR], walk: 0, reached: false };
 }
@@ -709,7 +728,7 @@ function stepPlay(dt) {
   if (top > -Infinity && g.position.y + dy <= top) { dy = top - g.position.y; c.vy = 0; c.grounded = true; }
   g.position.y += dy;
   if (g.position.y < -90) { g.position.copy(world.spawn); c.vy = 0; }
-  if (world.kind === 2 && c.grounded && g.position.x > 13 && !c.reached) { c.reached = true; emit("reach"); }
+  if (c.grounded && g.position.x > 13 && !c.reached) { c.reached = true; emit("reach"); }
   // камера за спиной
   const target = g.position.clone().add(V(0, 4, 0));
   const back = V(Math.sin(camYaw) * Math.cos(0.38), Math.sin(0.38), Math.cos(camYaw) * Math.cos(0.38));
@@ -761,6 +780,7 @@ window.addEventListener("keydown", (e) => {
   const mod = e.ctrlKey || e.metaKey;
   if (mod && e.code === "KeyZ") { e.preventDefault(); undo(); }
   else if (mod && e.code === "KeyD") { e.preventDefault(); duplicateSel(); }
+  else if (mod && e.code === "KeyG") { e.preventDefault(); groupSel(); }
   else if (!mod && e.code === "KeyF") focusSelected();
   else if (e.code === "Delete" || e.code === "Backspace") deleteSel();
   else if (e.code === "Escape") closePops();
@@ -787,7 +807,7 @@ const ICON = {
 };
 const RIBBON = [
   ["select", "tool"], ["move", "tool"], ["scale", "tool"], ["rotate", "tool"], ["transform", "off"], "|",
-  ["part", "dd"], "|", ["material", "dd"], ["color", "dd"], ["group", "off"], ["lock", "off"], ["anchor", "btn"], "|",
+  ["part", "dd"], "|", ["material", "dd"], ["color", "dd"], ["group", "btn"], ["lock", "off"], ["anchor", "btn"], "|",
   ["explorer", "pane"], ["properties", "pane"], ["toolbox", "off"],
 ];
 let curColor = "#a3a2a5", curMat = "Plastic";
@@ -810,6 +830,7 @@ function buildRibbon() {
       if (id === "color") dd ? showPop("colorPop", b) : applyColor(curColor);
       if (id === "material") dd ? showPop("matPop", b) : applyMaterial(curMat);
       if (id === "anchor") toggleAnchor();
+      if (id === "group") groupSel();
     });
     rb.appendChild(b);
   }
@@ -926,19 +947,28 @@ $("btnStop").addEventListener("click", stop);
 
 // ---------- Explorer и Properties ----------
 const SERVICES = ["Players", "Lighting", "MaterialService", "ReplicatedFirst", "ReplicatedStorage", "ServerScriptService", "ServerStorage", "StarterGui", "StarterPack", "StarterPlayer", "Teams", "SoundService", "TextChatService"];
-const open = { Bridge: false };
+const open = { Bridge: false, Workshop: true };
+const modelLabel = (m) => (m.startsWith("Model") ? "Model" : m);
 function renderExplorer() {
   const el = $("explorer");
   const row = (txt, cls, ic, pad, data = "") => `<div class="ex ${cls}" style="padding-left:${pad}px" ${data}><i class="ic" style="background:${ic}"></i>${txt}</div>`;
+  const tree = (list, pad) => {
+    let h = "";
+    for (const m of [...new Set(list.filter((p) => p.model).map((p) => p.model))]) {
+      const kids = list.filter((p) => p.model === m);
+      const on = kids.every((k) => selected.includes(k));
+      h += row(`<span data-tog="${m}">${open[m] ? "▾" : "▸"}</span> ${modelLabel(m)}`, on ? "on" : "", "#c08a3e", pad, `data-model="${m}"`);
+      if (open[m]) for (const k of kids) h += row(k.name, selected.includes(k) && !on ? "on" : "", "#9aa", pad + 20, `data-id="${k.id}"`);
+    }
+    for (const p of list.filter((p) => !p.model)) h += row(p.name, selected.includes(p) ? "on" : "", "#9aa", pad, `data-id="${p.id}"`);
+    return h;
+  };
   let h = row("Workspace", "svc", "#4f8dff", 8) + row("Camera", "svc", "#777", 24) + row("Terrain", "svc", "#5fa83c", 24);
-  const models = [...new Set(parts.filter((p) => p.model).map((p) => p.model))];
-  for (const m of models) {
-    const kids = parts.filter((p) => p.model === m);
-    const on = kids.every((k) => selected.includes(k));
-    h += row(`<span data-tog="${m}">${open[m] ? "▾" : "▸"}</span> ${m}`, on ? "on" : "", "#c08a3e", 24, `data-model="${m}"`);
-    if (open[m]) for (const k of kids) h += row(k.name, selected.includes(k) && !on ? "on" : "", "#9aa", 44, `data-id="${k.id}"`);
+  h += tree(parts.filter((p) => !p.folder), 24);
+  for (const f of [...new Set(parts.filter((p) => p.folder).map((p) => p.folder))]) {
+    h += row(`<span data-tog="${f}">${open[f] ? "▾" : "▸"}</span> ${f}`, "", "#e0b33a", 24);
+    if (open[f]) h += tree(parts.filter((p) => p.folder === f), 44);
   }
-  for (const p of parts.filter((p) => !p.model)) h += row(p.name, selected.includes(p) ? "on" : "", "#9aa", 24, `data-id="${p.id}"`);
   for (const s of SERVICES) h += row(s, "svc", "#555", 8);
   el.innerHTML = h;
 }
@@ -982,98 +1012,53 @@ $("props").addEventListener("change", (e) => {
     else if (v !== "") p[k] = v;
   });
 });
-
-// ---------- квест ----------
-const yellowish = (hex) => { const c = new THREE.Color(hex), hsl = {}; c.getHSL(hsl, THREE.SRGBColorSpace); return hsl.h > 0.1 && hsl.h < 0.2 && hsl.s > 0.5 && hsl.l > 0.35; };
+// ---------- квест: один путь, как в уроке ----------
+// 0 камера → 1 мост падает → 2 Anchor и пройти в мастерскую → 3 Move → 4 Rotate → 5 Scale → 6 Group + Anchor + Play → 7 сохранение.
+// 8 — ⭐ свой объект (по желанию). Любой этап можно открыть с карты: мир собирается так, будто прошлые этапы пройдены.
 const userParts = () => parts.filter((p) => p.user);
-function coversHole(p, hx) {
-  if (!p.anchored || p.model === "Bridge") return false;
-  const b = partBox(p);
-  return b.min.x <= hx - 1.5 && b.max.x >= hx + 1.5 && b.min.z <= -1 && b.max.z >= 1 && b.max.y > -0.8 && b.max.y < 1.5;
+const lampParts = () => ["lampBase", "lampPost", "lampBall"].map(byTag);
+const lampGrouped = () => { const l = lampParts(); return l.every((p) => p && p.model) && new Set(l.map((p) => p.model)).size === 1; };
+const lampAnchored = () => lampParts().every((p) => p && p.anchored);
+function ownModel() {
+  const models = [...new Set(userParts().filter((p) => p.model).map((p) => p.model))];
+  let best = { n: 0, a: false };
+  for (const m of models) {
+    const kids = parts.filter((p) => p.model === m && p.user);
+    if (kids.length > best.n) best = { n: kids.length, a: kids.every((p) => p.anchored) };
+  }
+  return best;
 }
-const holesCovered = () => HOLES.filter((hx) => parts.some((p) => coversHole(p, hx))).length;
-const isFiller = (p) => HOLES.some((hx) => coversHole(p, hx));
-function styleStats() {
-  const u = userParts();
-  return { n: u.filter((p) => !isFiller(p)).length, m: new Set(u.map((p) => p.material)).size, c: new Set(u.map((p) => p.color)).size, a: u.length ? u.every((p) => p.anchored) : false };
-}
-function ensureAnchoredBridge() { for (const p of parts) if (p.model === "Bridge" && !p.anchored) { p.anchored = true; } }
-function ensureFillers() {
-  for (const hx of HOLES) if (!parts.some((p) => coversHole(p, hx))) addPart({ size: [4, 0.6, 6], pos: [hx, -0.3, 0], color: "#9c6a3c", material: "WoodPlanks", anchored: true, user: true });
-}
-
+const mark = (b) => (b ? "✅" : "⬜");
 const STAGES = [
-  { ch: 1, img: "hello", setup() { buildCh1(); addPart({ name: "Star", shape: "Star", size: [3, 3, 3], pos: [33, 4, -12], rot: [0, -60, 0], color: "#ffd84a", material: "Neon", anchored: true, locked: true, tag: "star" }); const s = byTag("star"); animators.push((t) => { s.mesh.rotation.y = t; }); },
-    check: (ev) => ev === "focus" && selected.some((p) => p.tag === "star") },
-  { ch: 1, img: "hello", glow: ["part"], setup() { buildCh1(); },
-    progress() { const s = new Set(userParts().map((p) => p.shape)); return ["Block", "Sphere", "Wedge"].map((k) => `${s.has(k) ? "✅" : "⬜"} ${L.ui[k]}`).join("   "); },
-    check: () => ["Block", "Sphere", "Wedge"].every((k) => userParts().some((p) => p.shape === k)) },
-  { ch: 1, img: "think", glow: ["move"], setup() {
-      buildCh1();
-      addPart({ name: "Crate", size: [3, 3, 3], pos: [-12, 1.5, 10], color: "#b07a44", material: "WoodPlanks", tag: "crate" });
-      const pad = new THREE.Mesh(new THREE.CylinderGeometry(2.2, 2.2, 0.1, 32), new THREE.MeshStandardMaterial({ color: "#3cff8a", emissive: "#20d870", emissiveIntensity: 1.2, transparent: true, opacity: 0.8 }));
-      pad.position.set(12, 0.06, -2);
-      addStatic(pad, false);
-      const beam = new THREE.Mesh(new THREE.CylinderGeometry(2.2, 2.2, 14, 32, 1, true), new THREE.MeshBasicMaterial({ color: "#5dffa0", transparent: true, opacity: 0.18, depthWrite: false, side: THREE.DoubleSide }));
-      beam.position.set(12, 7, -2);
-      addStatic(beam, false);
-      animators.push((t) => { pad.material.opacity = 0.55 + Math.sin(t * 4) * 0.25; beam.material.opacity = 0.12 + Math.sin(t * 4) * 0.06; });
-    },
-    check: () => { const c = byTag("crate"); if (!c) return false; const b = partBox(c); return Math.abs(c.pos[0] - 12) <= 1.5 && Math.abs(c.pos[2] + 2) <= 1.5 && b.min.y > -0.8 && b.min.y < 1.2; } },
-  { ch: 1, img: "think", glow: ["scale"], setup() {
-      buildCh1();
-      addPart({ name: "Plank", size: [2, 1, 2], pos: [0, 0.5, 8], color: "#b07a44", material: "WoodPlanks", tag: "plank" });
-      const ghost = new THREE.LineSegments(EDGE_GEO, new THREE.LineBasicMaterial({ color: 0xffffff }));
-      ghost.scale.set(10, 1, 3); ghost.position.set(0, 0.5, 8);
-      const fill = new THREE.Mesh(new THREE.BoxGeometry(10, 1, 3), new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.18, depthWrite: false }));
-      fill.position.copy(ghost.position);
-      addStatic(ghost, false); addStatic(fill, false);
-      setLook(V(0, 16, 26), V(0, 0, 6));
-    },
-    check: () => { const p = byTag("plank"); return p && Math.abs(p.size[0] - 10) <= 1 && Math.abs(p.size[1] - 1) <= 0.5 && Math.abs(p.size[2] - 3) <= 1 && Math.abs(p.pos[0]) <= 1.5 && Math.abs(p.pos[2] - 8) <= 1.5; } },
-  { ch: 1, img: "think", glow: ["rotate"], setup() {
-      buildCh1();
-      addPart({ name: "Plank", size: [10, 1, 3], pos: [0, 1, 8], color: "#b07a44", material: "WoodPlanks", anchored: true, tag: "ramp" });
-      setLook(V(-14, 12, 26), V(0, 1, 6));
-    },
-    check: () => { const p = byTag("ramp"); if (!p) return false; const up = V(0, 1, 0).applyQuaternion(p.mesh.quaternion); const a = Math.acos(Math.min(1, Math.abs(up.y))) / DEG; return a >= 10 && a <= 70; } },
-  { ch: 1, img: "alarm", glow: ["material", "color"], setup() {
-      buildCh1();
-      addPart({ name: "Post", size: [1, 6, 1], pos: [6, 3, 6], color: "#3b3b40", material: "Basalt", anchored: true, locked: true });
-      addPart({ name: "Lamp", shape: "Sphere", size: [2.2, 2.2, 2.2], pos: [6, 7.1, 6], color: "#a3a2a5", material: "Glass", anchored: true, tag: "lamp" });
-      setLook(V(-6, 10, 24), V(6, 5, 6));
-    },
-    check: () => { const p = byTag("lamp"); return p && p.material === "Neon" && yellowish(p.color); } },
-  { ch: 2, img: "alarm", setup(fresh) { buildCh2(true); $("btnPlay").classList.add("pulse"); },
-    check: (ev) => ev === "stop" && lastFell > 0 },
-  { ch: 2, img: "think", glow: ["anchor"], setup(fresh) { buildCh2(fresh); },
-    check: (ev) => ev === "play" && parts.some((p) => p.model === "Bridge") && parts.filter((p) => p.model === "Bridge").every((p) => p.anchored) },
-  { ch: 2, img: "think", glow: ["part", "anchor"], setup(fresh) { buildCh2(fresh); ensureAnchoredBridge(); },
-    progress: () => `🕳 ${holesCovered()}/2`,
-    check: (ev) => ev === "reach" && holesCovered() === 2 },
-  { ch: 2, img: "hello", glow: ["material", "color"], setup(fresh) { buildCh2(fresh); ensureAnchoredBridge(); ensureFillers(); },
-    progress() { const s = styleStats(); return L.q.stages[9].progress.replace("{n}", Math.min(s.n, 3)).replace("{m}", Math.min(s.m, 2)).replace("{c}", Math.min(s.c, 2)).replace("{a}", s.a ? "✅" : "⬜"); },
-    check: () => { const s = styleStats(); return s.n >= 3 && s.m >= 2 && s.c >= 2 && s.a; } },
-  { ch: 2, img: "think", setup(fresh) { buildCh2(fresh); ensureAnchoredBridge(); ensureFillers(); fileFlags.file = fileFlags.roblox = false; },
-    progress: () => `${fileFlags.file ? "✅" : "⬜"} ${L.ui.saveFile}   ${fileFlags.roblox ? "✅" : "⬜"} ${L.ui.saveRoblox}`,
+  { img: "hello", look: [V(-30, 15, 26), V(0, 0, 0)], check: (ev) => ev === "focus" && selected.some((p) => p.tag === "star") },
+  { img: "alarm", look: [V(-30, 15, 26), V(0, 0, 0)], setup() { $("btnPlay").classList.add("pulse"); }, check: (ev) => ev === "stop" && lastFell > 0 },
+  { img: "think", glow: ["anchor"], look: [V(-30, 15, 26), V(0, 0, 0)], check: (ev) => ev === "reach" && fixed.bridge() },
+  { img: "think", glow: ["move"], look: [V(13, 11, 6), V(23, 5, -11)], check: () => fixed.lamp() },
+  { img: "think", glow: ["rotate"], look: [V(33, 7, 3), V(34, 4.5, -12)], check: () => fixed.sign() },
+  { img: "think", glow: ["scale"], look: [V(40, 8, 2), V(46, 1.5, -12)], check: () => fixed.bench() },
+  { img: "think", glow: ["group", "anchor"], look: [V(13, 11, 6), V(22, 5, -12)],
+    progress: () => `${mark(lampGrouped())} ${L.ui.group}   ${mark(lampGrouped() && lampAnchored())} ${L.ui.anchor}   ⬜ Play`,
+    check: (ev) => ev === "play" && lampGrouped() && lampAnchored() },
+  { img: "think", look: [V(0, 26, 34), V(36, 0, -6)], setup() { fileFlags.file = fileFlags.roblox = false; },
+    progress: () => `${mark(fileFlags.file)} ${L.ui.saveFile}   ${mark(fileFlags.roblox)} ${L.ui.saveRoblox}`,
     check: () => fileFlags.file && fileFlags.roblox },
-  { ch: 2, img: "proud", setup(fresh) { buildCh2(fresh); ensureAnchoredBridge(); ensureFillers(); setLook(V(-30, 12, 16), V(-52, 8, 0)); },
-    check: (ev) => ev === "name" },
+  { img: "hello", glow: ["part", "group", "anchor"], look: [V(OWN.x - 6, 11, OWN.z + 20), V(OWN.x, 1, OWN.z)],
+    progress() { const o = ownModel(); return fmt(L.q.stages[8].progress).replace("{n}", Math.min(o.n, 5)).replace("{a}", mark(o.n >= 5 && o.a)); },
+    check: () => { const o = ownModel(); return o.n >= 5 && o.a; } },
 ];
-const CH1 = [0, 1, 2, 3, 4, 5], CH2 = [6, 7, 8, 9, 10, 11];
+const MAIN = 8; // этапы 0–7 — основной путь, 8 — ⭐
 let cur = 0, stageDone = false, hintN = 0;
-const ch1Done = () => CH1.every((i) => store.done.includes(i));
+const fmt = (s) => s.replace(/\{(\w+)\}/g, (m, k) => L.ui[k] ?? m);
 
-function startStage(i, fresh = false) {
+function startStage(i) {
   if (playing) { playing = false; scene.remove(char.group); char = null; restoreParts(snapshot); renderStatus(); }
-  if (world.kind === 2) { clearTimeout(saveTimer); store.world2 = parts.map(ser); }
   cur = i; stageDone = false; hintN = 0;
   store.stage = i; saveStore();
   $("btnPlay").classList.remove("pulse");
   $("final").style.display = "none";
-  STAGES[i].setup(fresh);
-  calm.holes = world.kind === 2 && holesCovered() === 2;
-  if (world.kind === 2) { store.world2 = parts.map(ser); saveStore(); }
+  buildWorld(i);
+  STAGES[i].setup?.();
+  setLook(...STAGES[i].look.map((v) => v.clone()));
   tool = "select";
   refreshSel();
   renderQuest();
@@ -1088,14 +1073,12 @@ function complete() {
   stageDone = true;
   if (!store.done.includes(cur)) store.done.push(cur);
   saveStore();
-  setBitImg(cur === 5 || cur === 11 ? "proud" : "hello");
   renderQuest();
-  if (cur === 11) {
-    drawSign(store.name);
+  if (cur === MAIN - 1) {
     lightPortal();
     $("finalTitle").textContent = L.q.finalTitle;
     $("finalText").textContent = L.q.final;
-    setTimeout(() => ($("final").style.display = "grid"), 1200);
+    setTimeout(() => ($("final").style.display = "grid"), 900);
   }
 }
 function setBitImg(n) { $("qImg").src = `img/bit_${n}.jpg`; }
@@ -1105,74 +1088,57 @@ function renderProgress() {
   el.textContent = t;
   el.style.display = t && !stageDone ? "block" : "none";
 }
+const stepLabel = (i) => (i >= MAIN ? "⭐" : L.q.stageOf.replace("{n}", i + 1).replace("{m}", MAIN));
 function renderQuest() {
   const s = STAGES[cur], q = L.q, st = q.stages[cur];
-  const inCh = s.ch === 1 ? CH1 : CH2;
-  $("qChapter").textContent = s.ch === 1 ? q.ch1 : `${q.ch2} · ${q.planB}`;
-  $("qStep").textContent = q.stageOf.replace("{n}", inCh.indexOf(cur) + 1).replace("{m}", inCh.length);
-  $("qTitle").textContent = st.t;
-  $("qText").textContent = st.task;
-  setBitImg(stageDone ? (cur === 5 || cur === 11 ? "proud" : "hello") : s.img);
+  $("qChapter").textContent = q.title;
+  $("qStep").textContent = stepLabel(cur);
+  $("qTitle").textContent = fmt(st.t);
+  $("qText").textContent = fmt(st.task);
+  setBitImg(stageDone ? (cur >= MAIN - 1 ? "proud" : "hello") : s.img);
   $("qHint").style.display = hintN ? "block" : "none";
-  $("qHint").textContent = hintN ? st.hints.slice(0, hintN).join(" ") : "";
+  $("qHint").textContent = hintN ? st.hints.slice(0, hintN).map(fmt).join(" ") : "";
   $("qDone").style.display = stageDone ? "block" : "none";
-  $("qDone").textContent = stageDone ? "✅ " + st.done + (cur === 5 ? " " + (WAIT ? q.ch1DoneWait : q.ch1Done) : "") : "";
-  $("qBack").textContent = WAIT ? q.backWait : s.ch === 1 && !(cur === 5 && stageDone) ? q.back : "";
-  $("qBack").classList.toggle("wait", WAIT);
-  $("qPillText").textContent = `${q.stageOf.replace("{n}", inCh.indexOf(cur) + 1).replace("{m}", inCh.length)} · ${st.t}`;
+  $("qDone").textContent = stageDone ? "✅ " + fmt(st.done) : "";
+  $("qBack").textContent = q.back;
+  $("qPillText").textContent = `${stepLabel(cur)} · ${fmt(st.t)}`;
   $("hintBtn").textContent = q.hint;
   $("hintBtn").style.display = stageDone || hintN >= st.hints.length ? "none" : "";
   $("mapBtn").textContent = q.map;
   $("restartBtn").textContent = q.restart;
-  $("nextBtn").style.display = stageDone && cur < 11 && !(WAIT && cur === 5) ? "" : "none";
-  $("nextBtn").textContent = cur === 5 ? `${q.ch2} →` : `${q.next} →`;
-  $("nameRow").style.display = cur === 11 && !stageDone ? "flex" : "none";
-  $("nameInput").placeholder = q.namePh;
-  $("nameInput").value = store.name || "";
-  $("nameBtn").textContent = q.nameBtn;
+  $("nextBtn").style.display = stageDone && cur < MAIN ? "" : "none";
+  $("nextBtn").textContent = cur === MAIN - 1 ? fmt(q.stages[MAIN].t) + " →" : `${q.next} →`;
   for (const b of document.querySelectorAll(".rb.glow")) b.classList.remove("glow");
   if (hintN >= 2 && !stageDone) for (const g of s.glow || []) $("rb_" + g)?.classList.add("glow");
-  if (hintN >= 1 && !stageDone && (cur === 6 || cur === 7)) $("btnPlay").classList.add("pulse");
+  if (hintN >= 1 && !stageDone && (cur === 1 || cur === 2)) $("btnPlay").classList.add("pulse");
   renderProgress();
 }
 function renderStatus() { $("status").textContent = playing ? L.q.helpPlay : L.q.help; }
 $("hintBtn").onclick = () => { hintN++; renderQuest(); };
-$("nextBtn").onclick = () => startStage(cur + 1, cur + 1 === 6);
-$("restartBtn").onclick = () => startStage(cur, true);
-$("nameBtn").onclick = () => {
-  const v = $("nameInput").value.trim();
-  if (!v) return;
-  store.name = v; saveStore();
-  drawSign(v);
-  emit("name");
-};
-$("nameInput").addEventListener("keydown", (e) => { if (e.key === "Enter") $("nameBtn").click(); });
+$("nextBtn").onclick = () => startStage(cur + 1);
+$("restartBtn").onclick = () => { if (cur === MAIN) store.own = null; startStage(cur); };
 
-// карта
+// карта: все этапы открыты, пройденные отмечены звёздочкой
 function renderMap() {
   const q = L.q;
   $("mapTitle").textContent = q.title;
-  $("mapCh1").textContent = q.ch1;
-  $("mapCh2").innerHTML = `${q.ch2} <small>${q.planB}</small>`;
+  $("mapCh1").textContent = q.mapHint;
+  $("mapCh2").style.display = "none";
+  $("isles2").style.display = "none";
   $("mapClose").textContent = q.close;
   $("resetBtn").textContent = resetArmed ? q.resetSure : q.resetAll;
-  for (const [list, el] of [[CH1, "isles1"], [CH2, "isles2"]]) {
-    const firstOpen = list.find((i) => !store.done.includes(i));
-    $(el).innerHTML = list.map((i, k) => {
-      const done = store.done.includes(i);
-      const lock = (list === CH2 && (WAIT || !ch1Done())) || (!done && i !== firstOpen);
-      return `<div class="isle ${done ? "done" : ""} ${i === cur ? "cur" : ""} ${lock ? "lock" : ""}" data-i="${i}" data-ch2="${list === CH2 ? 1 : ""}"><b>${done ? "★" : k + 1}</b>${q.stages[i].t}</div>`;
-    }).join("");
-  }
+  $("isles1").innerHTML = STAGES.map((s, i) => {
+    const done = store.done.includes(i);
+    return `<div class="isle ${done ? "done" : ""} ${i === cur ? "cur" : ""}" data-i="${i}"><b>${done ? "★" : i >= MAIN ? "⭐" : i + 1}</b>${fmt(q.stages[i].t)}</div>`;
+  }).join("");
 }
 $("mapBtn").onclick = () => { renderMap(); $("map").style.display = "grid"; };
 $("mapClose").onclick = () => ($("map").style.display = "none");
 $("map").addEventListener("click", (e) => {
   const it = e.target.closest(".isle");
-  if (!it || it.classList.contains("lock")) { if (it) toast(it.dataset.ch2 && WAIT ? L.q.waitLocked : L.q.locked); return; }
+  if (!it) return;
   $("map").style.display = "none";
-  const i = +it.dataset.i;
-  startStage(i, i === 6);
+  startStage(+it.dataset.i);
 });
 $("finalClose").onclick = () => ($("final").style.display = "none");
 $("qMin").onclick = () => document.body.classList.add("qmin");
@@ -1181,22 +1147,11 @@ let resetArmed = false, resetT = 0;
 $("resetBtn").onclick = () => {
   if (!resetArmed) { resetArmed = true; renderMap(); clearTimeout(resetT); resetT = setTimeout(() => { resetArmed = false; renderMap(); }, 4000); return; }
   try { localStorage.removeItem(KEY); } catch (e) { /* нет хранилища */ }
-  store = { done: [], stage: 0, world2: null, name: "" };
+  store = { done: [], stage: 0, own: null };
   resetArmed = false;
   $("map").style.display = "none";
-  startStage(0, true);
+  startStage(0);
 };
-// напоминание «не застревай в мастерской» (только в режиме ожидания)
-let waitTime = 0, nextRemind = 240;
-function tickRemind(dt) {
-  waitTime += dt;
-  if (waitTime < nextRemind) return;
-  nextRemind += 240;
-  $("remind").textContent = L.q.remind.replace("{n}", Math.round(waitTime / 60));
-  $("remind").style.display = "block";
-  setBitImg("alarm");
-}
-$("remind").onclick = () => ($("remind").style.display = "none");
 $("smallFull").onclick = () => { const el = document.documentElement; (el.requestFullscreen ? el.requestFullscreen() : Promise.reject()).catch(() => window.open(location.href, "_blank")); };
 $("smallTab").onclick = () => window.open(location.href, "_blank");
 $("smallAnyway").onclick = () => { smallDismissed = true; fit(); };
@@ -1221,6 +1176,7 @@ function applyLang() {
   buildRibbon();
   renderQuest();
   renderStatus();
+  renderExplorer();
   $("smallText").textContent = L.q.tooSmall;
   $("smallFull").textContent = L.q.fullscreen;
   $("smallTab").textContent = L.q.newTab;
@@ -1247,14 +1203,12 @@ function frame() {
   else stepEditCam(dt);
   for (const a of animators) a(time, dt);
   renderer.render(scene, camera);
-  if (WAIT) tickRemind(dt);
 }
 resize();
 applyLang();
 let startAt = Number.isInteger(store.stage) && STAGES[store.stage] ? store.stage : 0;
-if (store.done.includes(startAt) && startAt < 11) startAt = [...CH1, ...CH2].find((i) => i > startAt && !store.done.includes(i)) ?? startAt;
-if (CH2.includes(startAt) && (WAIT || !ch1Done())) startAt = CH1.find((i) => !store.done.includes(i)) ?? 5;
-startStage(startAt, false);
-if (WAIT && ch1Done() && startAt === 5) complete();
+if (store.done.includes(startAt) && startAt < MAIN - 1) startAt = STAGES.findIndex((s, i) => i > startAt && !store.done.includes(i));
+if (startAt < 0) startAt = MAIN - 1;
+startStage(startAt);
 frame();
-window.__wb = { camera, tick(n) { for (let i = 0; i < n; i++) if (playing) stepPlay(1 / 60); }, keys, get charPos() { return char && char.group.position.toArray().map(r2); }, parts, get state() { return { cur, stageDone, parts: parts.length, playing, done: store.done }; }, startStage, emit, select, insert, play, stop, partsRef: () => parts, setTool, applyMaterial, applyColor, toggleAnchor };
+window.__wb = { camera, tick(n) { for (let i = 0; i < n; i++) if (playing) stepPlay(1 / 60); }, keys, get charPos() { return char && char.group.position.toArray().map(r2); }, parts, get state() { return { cur, stageDone, parts: parts.length, playing, done: store.done }; }, startStage, emit, select, insert, play, stop, partsRef: () => parts, setTool, toggleAnchor, groupSel, byTag, syncMesh, fixed };
