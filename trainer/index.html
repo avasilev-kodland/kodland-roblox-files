@@ -132,6 +132,7 @@ body.qmin #quest { display: none; } body.qmin #qPill { display: flex; }
 #qBack.wait { color: var(--warn); font-weight: 600; font-size: 12px; }
 #remind { position: absolute; left: 50%; top: 12px; transform: translateX(-50%); width: min(460px, calc(100% - 20px)); background: #3a2d10; border: 1px solid var(--warn); color: #ffe2a8; border-radius: 10px; padding: 9px 12px; display: none; z-index: 46; font-weight: 600; cursor: pointer; }
 .qb.danger { color: #ffb4b4; }
+#score { position: absolute; right: 10px; top: 10px; display: flex; gap: 10px; background: rgba(24,25,29,.88); border: 1px solid #44464d; border-radius: 999px; padding: 4px 12px; font-weight: 600; font-size: 13px; z-index: 5; pointer-events: none; }
 </style>
 <script type="importmap">
 { "imports": {
@@ -173,6 +174,7 @@ body.qmin #quest { display: none; } body.qmin #qPill { display: flex; }
         </div>
       </div>
       <div id="toast"></div>
+      <div id="score"></div>
       <div id="qPill"><img src="img/bit_hello.jpg" alt=""><span id="qPillText"></span></div>
       <div id="remind"></div>
     </div>

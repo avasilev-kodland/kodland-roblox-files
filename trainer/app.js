@@ -1,6 +1,6 @@
 // Мастерская Бита — тренажёр Roblox Studio для урока М1У1.
-// Те же задания, что в уроке: мост (Anchor) → мастерская → собрать одну вещь своего уровня (Move, Rotate, Scale, Group, Anchor) → сохранение.
-// Потом по желанию ⭐ Звёздная тропа.
+// Задание 1 — собрать одну вещь мастерской (Move, Rotate, Scale, Group, Anchor) и проверить в Play.
+// Задание 2 — по желанию: собрать остальные вещи, тропу и звёзды. Мир сохраняется в браузере.
 import * as THREE from "three";
 import { TransformControls } from "three/addons/controls/TransformControls.js";
 import { ConvexGeometry } from "three/addons/geometries/ConvexGeometry.js";
@@ -17,9 +17,10 @@ const navLang = (navigator.language || "").slice(0, 2).toLowerCase();
 let lang = LANGS.includes(params.get("lang")) ? params.get("lang") : LANGS.includes(navLang) ? navLang : "en";
 let L = T(lang);
 
-const KEY = "bitWorkshop.v3"; // v1, v2 — прежние квесты, их прогресс не подходит
-let store = { done: [], stage: 0 };
+const KEY = "bitWorkshop.v4"; // v1–v3 — прежние квесты, их прогресс не подходит
+let store = { v: 4, task1: false, stars: [], parts: null };
 try { Object.assign(store, JSON.parse(localStorage.getItem(KEY)) || {}); } catch (e) { /* без хранилища тоже работает */ }
+if (!Array.isArray(store.stars)) store.stars = [];
 function saveStore() { try { localStorage.setItem(KEY, JSON.stringify(store)); } catch (e) { /* приватное окно */ } }
 
 // ---------- сцена ----------
@@ -324,30 +325,62 @@ function glitchPixels(cx, cy, cz, n = 10, spread = 2.5, key = "holes") {
 }
 
 // ---------- мир: Хаб, мост и мастерская Бита ----------
-// Как в уроке: мост без Anchored, в мастерской три разобранные вещи разного уровня
-// (🟢 фонарь и 🟡 скамейка — со светящимся контуром, 🔴 указатель — по образцу рядом) и ⭐ Звёздная тропа к островку со звездой.
-// Детали — {name, size, pos, rot} собранного вида и start — где лежат сейчас. locked — стоит на месте.
+// Один мир на весь тренажёр, он сохраняется. Мост уже цел — его чинят в уроке (карточки 02–03), тренажёр его не раскрывает.
+// В мастерской — те же вещи, что на острове урока: 🟢 фонарь и указатель, 🟡 колодец и ворота (со светящимся контуром),
+// 🔴 тележка (по маленькому образцу рядом) и ⭐ тропа к островку со звездой. По острову разбросаны звёзды — их собирают в Play.
+// Деталь: собранный вид (size, pos, rot) и start — где и как она лежит сейчас. locked — стоит на месте.
+const Z90 = [0, 0, 90], X90 = [90, 0, 0], Y90 = [0, 90, 0];
+const STONE = "#a5a5ac", STONE2 = "#787a82", WOOD = "#96673e", WOOD2 = "#c49664", METAL = "#464852", GLOW = "#ffd678";
 const OBJS = {
-  lamp: { level: 1, pad: [22, -12], ghost: true, parts: [
-    { name: "Base", size: [3, 1, 3], pos: [22, 0.5, -12], color: "#3b3b40", material: "Basalt", locked: true },
-    { name: "Post", size: [1, 7, 1], pos: [22, 4.5, -12], color: "#3b3b40", material: "Basalt", start: { pos: [26, 0.5, -7], rot: [0, 0, 90] } },
-    { name: "Lamp", shape: "Sphere", size: [2.4, 2.4, 2.4], pos: [22, 9.2, -12], color: "#ffd84a", material: "Neon", start: { pos: [17, 1.2, -8] } },
+  lamp: { level: 1, pad: [20, -12], ghost: true, parts: [
+    { name: "Base", size: [2.4, 0.8, 2.4], pos: [20, 0.4, -12], color: STONE2, material: "Basalt", locked: true },
+    { name: "Post", shape: "Cylinder", size: [6, 0.8, 0.8], rot: Z90, pos: [20, 3.8, -12], color: METAL, material: "Plastic", start: { pos: [24, 0.4, -8], rot: [0, 20 - 20, 0] } },
+    { name: "Lamp", shape: "Sphere", size: [2, 2, 2], pos: [20, 7.8, -12], color: GLOW, material: "Neon", start: { pos: [16, 1, -8] } },
+    { name: "Cap", shape: "Cylinder", size: [0.5, 2.8, 2.8], rot: Z90, pos: [20, 9.05, -12], color: METAL, material: "Plastic", start: { pos: [16, 0.25, -16] } },
   ] },
-  bench: { level: 2, pad: [36, -12], ghost: true, parts: [
-    { name: "Leg", size: [0.8, 1.6, 1.8], pos: [33.8, 0.8, -12], color: "#5a3a22", material: "WoodPlanks", locked: true },
-    { name: "Leg", size: [0.8, 1.6, 1.8], pos: [38.2, 0.8, -12], color: "#5a3a22", material: "WoodPlanks", start: { pos: [40, 0.4, -6], rot: [0, 0, 90] } },
-    { name: "Seat", size: [6, 1, 2], pos: [36, 2.1, -12], color: "#b07a44", material: "WoodPlanks", start: { pos: [32, 0.5, -6], size: [2, 1, 1] } },
+  sign: { level: 1, pad: [32, -12], ghost: true, parts: [
+    { name: "Post", size: [0.7, 7, 0.7], pos: [32, 3.5, -12], color: WOOD, material: "WoodPlanks", start: { pos: [35, 0.35, -7], rot: Z90 } },
+    { name: "SignLeft", size: [4, 1, 0.3], rot: [0, -15, 0], pos: [30.2, 5.8, -12], color: WOOD2, material: "WoodPlanks", start: { pos: [28, 0.15, -7], rot: X90 } },
+    { name: "SignRight", size: [4, 1, 0.3], rot: [0, 15, 0], pos: [33.8, 4.5, -12], color: WOOD2, material: "WoodPlanks", start: { pos: [36, 0.15, -17], rot: X90 } },
+    { name: "Top", shape: "Sphere", size: [1.2, 1.2, 1.2], pos: [32, 7.6, -12], color: "#6eebff", material: "Neon", start: { pos: [29, 0.6, -17] } },
   ] },
-  sign: { level: 3, pad: [50, -12], ghost: false, parts: [
-    { name: "Post", size: [0.8, 6, 0.8], pos: [50, 3, -12], color: "#7b4f2c", material: "WoodPlanks", start: { pos: [54, 0.4, -6], rot: [0, 0, 90] } },
-    { name: "Sign", size: [4, 1.6, 0.4], pos: [50, 5, -11.4], color: "#d9b26a", material: "WoodPlanks", start: { pos: [47, 0.2, -6], rot: [90, 0, 0] } },
-    { name: "Top", shape: "Sphere", size: [1.2, 1.2, 1.2], pos: [50, 6.6, -12], color: "#5ff3ff", material: "Neon", start: { pos: [51, 0.6, -4] } },
+  well: { level: 2, pad: [44, -12], ghost: true, parts: [
+    { name: "Ring", shape: "Cylinder", size: [2.4, 6, 6], rot: Z90, pos: [44, 1.2, -12], color: STONE, material: "Basalt", start: { pos: [40, 0.6, -6], size: [1.2, 3, 3] } },
+    { name: "Water", shape: "Cylinder", size: [0.2, 5, 5], rot: Z90, pos: [44, 2.3, -12], color: "#5aaae6", material: "Glass", start: { pos: [48, 0.1, -6] } },
+    { name: "PostLeft", size: [0.6, 5, 0.6], pos: [41.3, 4.9, -12], color: WOOD, material: "WoodPlanks", start: { pos: [40, 0.3, -18], rot: Z90 } },
+    { name: "PostRight", size: [0.6, 5, 0.6], pos: [46.7, 4.9, -12], color: WOOD, material: "WoodPlanks", start: { pos: [49, 0.3, -17], rot: X90 } },
+    { name: "RoofFront", size: [6.6, 0.3, 2.4], rot: [30, 0, 0], pos: [44, 7.9, -12.95], color: WOOD2, material: "WoodPlanks", start: { pos: [43, 0.15, -20] } },
+    { name: "RoofBack", size: [6.6, 0.3, 2.4], rot: [-30, 0, 0], pos: [44, 7.9, -11.05], color: WOOD2, material: "WoodPlanks", start: { pos: [47, 0.15, -4] } },
   ] },
+  gate: { level: 2, pad: [56, -12], ghost: true, parts: [
+    { name: "PillarLeft", size: [1.6, 8, 1.6], pos: [52, 4, -12], color: STONE, material: "Basalt", start: { pos: [53, 0.8, -5], rot: Z90 } },
+    { name: "PillarRight", size: [1.6, 8, 1.6], pos: [60, 4, -12], color: STONE, material: "Basalt", start: { pos: [64, 0.8, -15], rot: X90 } },
+    { name: "Beam", size: [10, 1.4, 2], pos: [56, 8.7, -12], color: WOOD, material: "WoodPlanks", start: { pos: [57, 0.7, -19], size: [4, 1.4, 1] } },
+    { name: "CapLeft", shape: "Wedge", size: [2, 1.2, 2], rot: Y90, pos: [52, 10, -12], color: STONE2, material: "Basalt", start: { pos: [49, 0.6, -8], rot: Y90 } },
+    { name: "CapRight", shape: "Wedge", size: [2, 1.2, 2], rot: [0, -90, 0], pos: [60, 10, -12], color: STONE2, material: "Basalt", start: { pos: [65, 0.6, -8], rot: [0, -90, 0] } },
+    { name: "Crystal", shape: "Sphere", size: [1.8, 1.8, 1.8], pos: [56, 10.3, -12], color: "#78e6ff", material: "Neon", start: { pos: [60, 0.9, -4] } },
+  ] },
+  cart: { level: 3, pad: [24, 12], ghost: false, parts: [
+    { name: "Bed", size: [6, 0.5, 3.5], pos: [24, 2.2, 12], color: WOOD, material: "WoodPlanks", start: { pos: [25, 0.25, 17], rot: [0, 30, 0] } },
+    { name: "SideLeft", size: [6, 1.2, 0.3], pos: [24, 3.05, 10.4], color: WOOD2, material: "WoodPlanks", start: { pos: [18, 0.15, 18], rot: X90 } },
+    { name: "SideRight", size: [6, 1.2, 0.3], pos: [24, 3.05, 13.6], color: WOOD2, material: "WoodPlanks", start: { pos: [31, 0.15, 18], rot: X90 } },
+    { name: "Wheel", shape: "Cylinder", size: [0.5, 2.6, 2.6], rot: Y90, pos: [26, 1.3, 10.05], color: METAL, material: "WoodPlanks", start: { pos: [17, 0.25, 7], rot: Z90 } },
+    { name: "Wheel", shape: "Cylinder", size: [0.5, 2.6, 2.6], rot: Y90, pos: [22, 1.3, 10.05], color: METAL, material: "WoodPlanks", start: { pos: [20, 0.25, 6], rot: Z90 } },
+    { name: "Wheel", shape: "Cylinder", size: [0.5, 2.6, 2.6], rot: Y90, pos: [26, 1.3, 13.95], color: METAL, material: "WoodPlanks", start: { pos: [29, 0.25, 6], rot: Z90 } },
+    { name: "Wheel", shape: "Cylinder", size: [0.5, 2.6, 2.6], rot: Y90, pos: [22, 1.3, 13.95], color: METAL, material: "WoodPlanks", start: { pos: [32, 0.25, 9], rot: Z90 } },
+    { name: "AxleFront", shape: "Cylinder", size: [4.4, 0.3, 0.3], rot: Y90, pos: [26, 1.3, 12], color: METAL, material: "Plastic", start: { pos: [18, 0.15, 21] } },
+    { name: "AxleBack", shape: "Cylinder", size: [4.4, 0.3, 0.3], rot: Y90, pos: [22, 1.3, 12], color: METAL, material: "Plastic", start: { pos: [30, 0.15, 21] } },
+  ] },
+  path: { level: 0, ghost: true, parts: [0, 1, 2, 3].map((i) => ({ name: "Stone", size: [4, 1, 4], pos: [40, 0.5 + i, 25 + 5 * i], color: "#9aa0a8", material: "Basalt",
+    start: [{ pos: [42, 0.5, 15], rot: [0, 30, 0] }, { pos: [49, 2, 16], rot: Z90 }, { pos: [54, 0.5, 13], size: [2, 1, 2] }, { pos: [45, 0.5, 20] }][i] })) },
 };
-const PATH = { stones: [[40, 0.5, 25], [40, 1.5, 30], [40, 2.5, 35], [40, 3.5, 40]],
-  start: [{ pos: [34, 0.5, 15], rot: [0, 30, 0] }, { pos: [41, 2, 16], rot: [0, 0, 90] }, { pos: [46, 0.5, 14], size: [2, 1, 2] }, { pos: [37, 0.5, 19] }] };
-let portalMat, portalLight;
-function ghost(shape, size, pos, rot = [0, 0, 0]) {
+const OBJ_KEYS = Object.keys(OBJS);
+const FOLDER = { lamp: "1 Lamp", sign: "2 Signpost", well: "3 Well", gate: "4 Gate", cart: "5 Cart", path: "6 Star path" };
+// звёзды для сбора в Play: Хаб, мост, мастерская и островок со звездой (туда — только по тропе)
+const STARS = [[-60, -15], [-32, 17], [-22, -17], [0, 0], [64, 18], [12, -20], [67, -20], [36, 4], [37, 46, 6.5], [43, 51, 6.5]]
+  .map(([x, z, y = 1.6], i) => ({ id: i, pos: [x, y, z] }));
+let portalMat, portalLight, starMeshes = [];
+function ghost(shape, size, pos, rot = [0, 0, 0], key = "") {
   const g = new THREE.Group();
   const fill = new THREE.Mesh(geo(shape), new THREE.MeshBasicMaterial({ color: 0x2fd9ff, transparent: true, opacity: 0.4, depthWrite: false, toneMapped: false }));
   g.add(fill);
@@ -357,21 +390,20 @@ function ghost(shape, size, pos, rot = [0, 0, 0]) {
   g.rotation.set(rot[0] * DEG, rot[1] * DEG, rot[2] * DEG);
   g.scale.fromArray(size);
   addStatic(g, false);
-  animators.push((t) => { fill.material.opacity = 0.34 + Math.sin(t * 3) * 0.1; });
-  return g;
+  animators.push((t) => { fill.material.opacity = 0.34 + Math.sin(t * 3) * 0.1; g.visible = !calm[key]; }); // вещь собрана — контур не нужен
 }
 const LEVEL_COLOR = { 1: "#5fcf7a", 2: "#f2c94c", 3: "#ef6a5a" };
 function pad(x, z, level) {
-  const ring = new THREE.Mesh(new THREE.CylinderGeometry(4.6, 4.6, 0.1, 40), sm(LEVEL_COLOR[level], { roughness: 0.9 }));
+  const ring = new THREE.Mesh(new THREE.CylinderGeometry(5.6, 5.6, 0.1, 40), sm(LEVEL_COLOR[level], { roughness: 0.9 }));
   ring.position.set(x, 0.05, z);
-  const m = new THREE.Mesh(new THREE.CylinderGeometry(4.1, 4.1, 0.14, 40), sm("#8d939b", { roughness: 0.9 }));
+  const m = new THREE.Mesh(new THREE.CylinderGeometry(5.1, 5.1, 0.14, 40), sm("#8d939b", { roughness: 0.9 }));
   m.position.set(x, 0.07, z);
   for (const o of [ring, m]) { o.receiveShadow = true; addStatic(o, false); }
 }
-// образец 🔴 указателя: маленькая собранная копия на подставке рядом с площадкой
+// образец 🔴: маленькая собранная копия на подставке рядом с площадкой
 function miniSample(o) {
-  const k = 0.35, [px, pz] = o.pad, base = V(px + 6.5, 1.6, pz + 3);
-  const stand = new THREE.Mesh(new THREE.BoxGeometry(2.4, 1.6, 2.4), sm("#6d6a66"));
+  const k = 0.32, [px, pz] = o.pad, base = V(px + 8, 1.6, pz - 3);
+  const stand = new THREE.Mesh(new THREE.BoxGeometry(2.6, 1.6, 2.6), sm("#6d6a66"));
   stand.position.set(base.x, 0.8, base.z);
   addStatic(stand);
   const g = new THREE.Group();
@@ -379,15 +411,16 @@ function miniSample(o) {
   for (const d of o.parts) {
     const m = new THREE.Mesh(geo(d.shape || "Block"), makeMat({ ...d, transparency: 0 }));
     m.scale.fromArray(d.size.map((v) => v * k));
+    const r = d.rot || [0, 0, 0];
+    m.rotation.set(r[0] * DEG, r[1] * DEG, r[2] * DEG);
     m.position.set((d.pos[0] - px) * k, d.pos[1] * k, (d.pos[2] - pz) * k);
     m.castShadow = true;
     g.add(m);
   }
   addStatic(g, false);
-  animators.push((t) => { g.rotation.y = Math.sin(t * 0.6) * 0.5; });
+  animators.push((t) => { g.rotation.y = Math.sin(t * 0.6) * 0.6; });
 }
-// stage — номер этапа: всё, что чинили раньше, уже починено
-function buildWorld(stage) {
+function buildWorld() {
   clearWorld();
   world = { kind: 2, spawn: V(-24, 0, 0) };
   island(-40, 0, 60, 44);
@@ -397,7 +430,11 @@ function buildWorld(stage) {
     post.position.set(s * 10.6, 1.75, z);
     addStatic(post);
   }
-  // арка портала на острове Хаба
+  for (let i = 0; i < 10; i++) { // мост цел: его чинят в уроке
+    const plank = new THREE.Mesh(new THREE.BoxGeometry(1.9, 0.6, 6), makeMat({ color: "#9c6a3c", material: "WoodPlanks", size: [1.9, 0.6, 6] }));
+    plank.position.set(-9 + i * 2, -0.3, 0);
+    addStatic(plank);
+  }
   const stone = sm("#9aa0a8", { flatShading: true });
   for (const z of [-6, 6]) { const pl = new THREE.Mesh(new THREE.BoxGeometry(2, 11, 2), stone); pl.position.set(-52, 5.5, z); addStatic(pl); }
   const beam = new THREE.Mesh(new THREE.BoxGeometry(2.4, 2.2, 14), stone);
@@ -421,64 +458,65 @@ function buildWorld(stage) {
   rockS.rotation.x = Math.PI;
   rockS.position.set(40, -3, 48.5);
   addStatic(rockS, false);
-  const star = new THREE.Mesh(geo("Star"), new THREE.MeshStandardMaterial({ color: "#ffd84a", emissive: "#ffcc00", emissiveIntensity: 1.3 }));
-  star.scale.setScalar(3.4);
-  star.position.set(40, 8, 49);
-  addStatic(star, false);
-  animators.push((t) => { star.rotation.y = t * 1.5; star.position.y = 8 + Math.sin(t * 2) * 0.3; });
-  placeBit(26, 6, -Math.PI / 2);
-  for (const [x, z, h] of [[-58, -16, 9], [-50, 15, 8], [-20, -17, 7], [64, 17, 8], [16, 18, 7], [67, -19, 8], [14, -19, 7]]) tree(x, z, h);
+  placeBit(14, 9, -Math.PI / 2);
+  for (const [x, z, h] of [[-58, -16, 9], [-50, 15, 8], [-20, -17, 7], [64, 12, 8], [67, 4, 7], [14, -19, 7]]) tree(x, z, h);
   farIsland(-150, 25, -180, 24); farIsland(170, 15, -140, 18); farIsland(30, 50, -250, 30); farIsland(-60, -10, 190, 18);
-  // мост
-  for (let i = 0; i < 10; i++) addPart({ name: "Plank", model: "Bridge", size: [1.9, 0.6, 6], pos: [-9 + i * 2, -0.3, 0], color: "#9c6a3c", material: "WoodPlanks", anchored: stage > 1 });
-  // вещи мастерской; после этапа сборки фонарь уже собран (как у ученика после урока)
+  // вещи мастерской: разобраны, детали рядом с площадками
   for (const [key, o] of Object.entries(OBJS)) {
-    pad(o.pad[0], o.pad[1], o.level);
-    const done = stage > 3 && key === "lamp";
-    for (const d of o.parts) {
-      const s = !done && d.start ? d.start : {};
-      addPart({ folder: "Workshop", obj: key, name: d.name, shape: d.shape || "Block", color: d.color, material: d.material,
-        size: s.size || d.size, pos: s.pos || d.pos, rot: s.rot || [0, 0, 0], anchored: !!d.locked || done, locked: !!d.locked, model: done ? "Model" : null });
-      if (o.ghost) ghost(d.shape || "Block", d.size, d.pos);
-    }
+    if (o.pad) pad(o.pad[0], o.pad[1], o.level);
+    o.parts.forEach((d, i) => {
+      const s = d.start || {};
+      addPart({ folder: "Workshop/" + FOLDER[key], obj: key, key: `${key}:${i}`, name: d.name, shape: d.shape || "Block", color: d.color, material: d.material,
+        size: [...(s.size || d.size)], pos: [...(s.pos || d.pos)], rot: [...(s.rot || d.rot || [0, 0, 0])], anchored: !!d.locked, locked: !!d.locked });
+      if (o.ghost) ghost(d.shape || "Block", d.size, d.pos, d.rot, key);
+    });
     if (!o.ghost) miniSample(o);
   }
-  // ⭐ камни тропы лежат в мастерской
-  PATH.stones.forEach((pos, i) => {
-    const s = PATH.start[i];
-    addPart({ folder: "Star path", obj: "path", name: "Stone", size: s.size || [4, 1, 4], pos: s.pos, rot: s.rot || [0, 0, 0], color: "#9aa0a8", material: "Basalt" });
-    ghost("Block", [4, 1, 4], pos);
+  // звёзды
+  starMeshes = STARS.map((s) => {
+    const m = new THREE.Mesh(geo("Star"), new THREE.MeshStandardMaterial({ color: "#ffd84a", emissive: "#ffcc00", emissiveIntensity: 1.3 }));
+    m.scale.setScalar(s.id >= 8 ? 2.2 : 1.6);
+    m.position.fromArray(s.pos);
+    m.userData.star = s.id;
+    addStatic(m, false);
+    const ph = s.id;
+    animators.push((t) => { m.rotation.y = t * 1.6 + ph; m.position.y = s.pos[1] + Math.sin(t * 2 + ph) * 0.25; m.visible = !store.stars.includes(s.id); });
+    return m;
   });
-  glitchPixels(0, 0.4, 0, 9, 4, "bridge");
-  for (const [key, o] of Object.entries(OBJS)) glitchPixels(o.pad[0], 2, o.pad[1], 6, 2, key);
+  for (const key of OBJ_KEYS) if (OBJS[key].pad) glitchPixels(OBJS[key].pad[0], 2, OBJS[key].pad[1], 6, 2.5, key);
   glitchPixels(40, 1.5, 32, 7, 3, "path");
-  updateCalm();
 }
-// деталь на месте: её габариты совпадают с собранным видом (так проверяются и Move, и Rotate, и Scale)
-const tmpB = new THREE.Box3(), tgtV = V(), sizeV = V();
+// деталь на месте: её габариты (с учётом поворота) совпадают с собранным видом — так проверяются и Move, и Rotate, и Scale
+const tmpB = new THREE.Box3(), tgtB = new THREE.Box3(), cA = V(), sA = V(), cB = V(), sB = V();
+const tgtObj = new THREE.Mesh(new THREE.BoxGeometry(1, 1, 1));
+function targetBox(d) {
+  const r = d.rot || [0, 0, 0];
+  tgtObj.geometry = geo(d.shape || "Block");
+  tgtObj.position.fromArray(d.pos);
+  tgtObj.rotation.set(r[0] * DEG, r[1] * DEG, r[2] * DEG);
+  tgtObj.scale.fromArray(d.size);
+  tgtObj.updateMatrixWorld(true);
+  return tgtB.copy(tgtObj.geometry.boundingBox).applyMatrix4(tgtObj.matrixWorld);
+}
 function placed(p, d) {
-  partBox(p, tmpB);
-  const c = tmpB.getCenter(tgtV), s = tmpB.getSize(sizeV);
-  return Math.abs(c.x - d.pos[0]) <= 1.1 && Math.abs(c.y - d.pos[1]) <= 1.1 && Math.abs(c.z - d.pos[2]) <= 1.1 &&
-    Math.abs(s.x - d.size[0]) <= 0.7 && Math.abs(s.y - d.size[1]) <= 0.7 && Math.abs(s.z - d.size[2]) <= 0.7;
+  partBox(p, tmpB).getCenter(cA); tmpB.getSize(sA);
+  targetBox(d).getCenter(cB); tgtB.getSize(sB);
+  return Math.abs(cA.x - cB.x) <= 1.1 && Math.abs(cA.y - cB.y) <= 1.1 && Math.abs(cA.z - cB.z) <= 1.1 &&
+    Math.abs(sA.x - sB.x) <= 0.7 && Math.abs(sA.y - sB.y) <= 0.7 && Math.abs(sA.z - sB.z) <= 0.7;
 }
 const objParts = (key) => parts.filter((p) => p.obj === key);
 function objState(key) {
-  const list = objParts(key);
-  const targets = key === "path" ? PATH.stones.map((pos) => ({ pos, size: [4, 1, 4] })) : OBJS[key].parts;
-  // камни тропы одинаковые — подходит любой камень на любой контур
+  const list = objParts(key), targets = OBJS[key].parts.filter((d) => !d.locked); // закреплённые на месте детали не считаем
+  // одинаковые детали (камни, колёса) подходят на любое своё место
   const used = new Set();
   let ok = 0;
-  for (const d of targets) { const p = list.find((x) => !used.has(x) && placed(x, d)); if (p) { used.add(p); ok++; } }
+  for (const d of targets) { const p = list.find((x) => !used.has(x) && x.name === d.name && placed(x, d)); if (p) { used.add(p); ok++; } }
   const grouped = list.length > 0 && list.every((p) => p.model) && new Set(list.map((p) => p.model)).size === 1;
   return { ok, n: targets.length, grouped, anchored: list.every((p) => p.anchored) };
 }
 const fixedAll = (st) => st.ok === st.n && st.grouped && st.anchored;
-const fixed = { bridge: () => parts.some((p) => p.model === "Bridge") && parts.filter((p) => p.model === "Bridge").every((p) => p.anchored) };
-function updateCalm() {
-  calm.bridge = fixed.bridge();
-  for (const k of [...Object.keys(OBJS), "path"]) calm[k] = objState(k).ok === objState(k).n;
-}
+const builtKeys = () => OBJ_KEYS.filter((k) => fixedAll(objState(k)));
+function updateCalm() { for (const k of OBJ_KEYS) { const st = objState(k); calm[k] = st.ok === st.n; } }
 function lightPortal() {
   calm.portal = true;
   portalMat.emissive.set("#5ff3ff");
@@ -486,7 +524,21 @@ function lightPortal() {
   portalMat.emissiveIntensity = 1.4;
   portalLight.color.set("#5ff3ff");
   portalLight.intensity = 60;
-  animators.push((t) => { portalMat.emissiveIntensity = 1.2 + Math.sin(t * 3) * 0.3; });
+}
+// сохранение мира: состояние деталей мастерской
+function saveWorld() {
+  store.parts = {};
+  for (const p of parts) if (p.key) store.parts[p.key] = { pos: p.pos, rot: p.rot, size: p.size, anchored: p.anchored, model: p.model };
+  saveStore();
+}
+function loadWorld() {
+  if (!store.parts) return;
+  for (const p of parts) {
+    const s = p.key && store.parts[p.key];
+    if (!s) continue;
+    Object.assign(p, { pos: s.pos, rot: s.rot, size: s.size, anchored: s.anchored, model: s.model });
+    syncMesh(p); restyle(p);
+  }
 }
 
 // ---------- камера в режиме редактора ----------
@@ -671,7 +723,7 @@ function groupSel() {
   const used = new Set(parts.map((p) => p.model));
   let m = "Model";
   while (used.has(m)) m = "Model" + ++modelN;
-  const folder = selected.find((p) => p.folder)?.folder || null;
+  const folder = selected.find((p) => p.folder)?.folder || null; // модель остаётся в папке вещи
   for (const p of selected) { p.model = m; p.folder = folder; }
   refreshSel();
   onChange();
@@ -682,6 +734,8 @@ function onChange() {
   renderProps();
   renderRibbonState();
   updateCalm();
+  clearTimeout(saveTimer);
+  saveTimer = setTimeout(() => { if (!playing) saveWorld(); }, 300);
   emit("change");
 }
 
@@ -775,8 +829,7 @@ function stepPlay(dt) {
   if (top > -Infinity && g.position.y + dy <= top) { dy = top - g.position.y; c.vy = 0; c.grounded = true; }
   g.position.y += dy;
   if (g.position.y < -90) { g.position.copy(world.spawn); c.vy = 0; }
-  if (c.grounded && g.position.x > 13 && !c.reached) { c.reached = true; emit("reach"); }
-  if (c.grounded && g.position.z > 43 && g.position.y > 4 && !c.star) { c.star = true; emit("star"); }
+  collectStars(g.position);
   // камера за спиной
   const target = g.position.clone().add(V(0, 4, 0));
   const back = V(Math.sin(camYaw) * Math.cos(0.38), Math.sin(0.38), Math.cos(camYaw) * Math.cos(0.38));
@@ -1013,9 +1066,17 @@ function renderExplorer() {
   };
   let h = row("Workspace", "svc", "#4f8dff", 8) + row("Camera", "svc", "#777", 24) + row("Terrain", "svc", "#5fa83c", 24);
   h += tree(parts.filter((p) => !p.folder), 24);
-  for (const f of [...new Set(parts.filter((p) => p.folder).map((p) => p.folder))]) {
+  const tops = [...new Set(parts.filter((p) => p.folder).map((p) => p.folder.split("/")[0]))];
+  for (const f of tops) {
     h += row(`<span data-tog="${f}">${open[f] ? "▾" : "▸"}</span> ${f}`, "", "#e0b33a", 24);
-    if (open[f]) h += tree(parts.filter((p) => p.folder === f), 44);
+    if (!open[f]) continue;
+    const inF = parts.filter((p) => p.folder && p.folder.split("/")[0] === f);
+    h += tree(inF.filter((p) => !p.folder.includes("/")), 44);
+    for (const sub of [...new Set(inF.filter((p) => p.folder.includes("/")).map((p) => p.folder))]) {
+      const name = sub.split("/")[1];
+      h += row(`<span data-tog="${sub}">${open[sub] ? "▾" : "▸"}</span> ${name}`, "", "#e0b33a", 44);
+      if (open[sub]) h += tree(inF.filter((p) => p.folder === sub), 64);
+    }
   }
   for (const s of SERVICES) h += row(s, "svc", "#555", 8);
   el.innerHTML = h;
@@ -1060,143 +1121,120 @@ $("props").addEventListener("change", (e) => {
     else if (v !== "") p[k] = v;
   });
 });
-// ---------- квест: те же задания, что в уроке ----------
-// 0 мост падает → 1 Anchor и пройти по мосту → 2 долететь до мастерской → 3 собрать одну вещь своего уровня 🏁 → 4 сохранение.
-// 5 — ⭐ Звёздная тропа (по желанию). Любой этап можно открыть с карты: мир собирается так, будто прошлые этапы пройдены.
+// ---------- задания ----------
+// Задание 1 — собрать одну вещь и проверить в Play (как 🏁 урока). Задание 2 — по желанию: застроить мастерскую и собрать звёзды.
+// Каждая постройка и каждая звезда засчитываются в счётчике справа вверху.
 const mark = (b) => (b ? "✅" : "⬜");
+const fmt = (s) => s.replace(/\{(\w+)\}/g, (m, k) => L.ui[k] ?? m);
+let hintN = 0, lastBuilt = -1;
 function bestObj() {
   let best = null;
-  for (const key of Object.keys(OBJS)) {
-    const st = objState(key), score = st.ok / st.n + (st.grouped ? 0.5 : 0) + (st.anchored ? 0.25 : 0);
+  for (const key of OBJ_KEYS) {
+    const st = objState(key);
+    if (fixedAll(st)) continue;
+    const score = st.ok / st.n + (st.grouped ? 0.5 : 0) + (st.anchored ? 0.25 : 0);
     if (!best || score > best.score) best = { key, st, score };
   }
   return best;
 }
-const objProgress = (key, st) => `${key === "path" ? "" : L.q.obj[key] + ": "}${fmt(L.q.parts)} ${st.ok}/${st.n} · ${mark(st.grouped)} ${L.ui.group} · ${mark(st.grouped && st.anchored)} ${L.ui.anchor}`;
-const STAGES = [
-  { img: "alarm", look: [V(-30, 15, 26), V(0, 0, 0)], setup() { $("btnPlay").classList.add("pulse"); }, check: (ev) => ev === "stop" && lastFell > 0 },
-  { img: "think", glow: ["anchor"], look: [V(-30, 15, 26), V(0, 0, 0)], check: (ev) => ev === "reach" && fixed.bridge() },
-  { img: "hello", look: [V(-34, 12, 20), V(-10, 2, 0)], check: (ev) => ev === "focus" && selected.some((p) => p.folder === "Workshop") },
-  { img: "think", glow: ["move", "rotate", "scale", "group", "anchor"], look: [V(36, 15, 10), V(36, 1, -12)],
-    progress() { const b = bestObj(); return objProgress(b.key, b.st); },
-    check: (ev) => ev === "play" && Object.keys(OBJS).some((k) => fixedAll(objState(k))) },
-  { img: "think", look: [V(0, 26, 34), V(36, 0, -6)], setup() { fileFlags.file = fileFlags.roblox = false; },
-    progress: () => `${mark(fileFlags.file)} ${L.ui.saveFile}   ${mark(fileFlags.roblox)} ${L.ui.saveRoblox}`,
-    check: () => fileFlags.file && fileFlags.roblox },
-  { img: "hello", glow: ["move", "rotate", "scale", "group", "anchor"], look: [V(74, 20, 28), V(36, 1, 34)],
-    progress: () => objProgress("path", objState("path")),
-    check: (ev) => ev === "star" && fixedAll(objState("path")) },
-];
-const MAIN = 5; // этапы 0–4 — основной путь, 5 — ⭐
-let cur = 0, stageDone = false, hintN = 0;
-const fmt = (s) => s.replace(/\{(\w+)\}/g, (m, k) => L.ui[k] ?? m);
-
-function startStage(i) {
-  if (playing) { playing = false; scene.remove(char.group); char = null; restoreParts(snapshot); renderStatus(); }
-  cur = i; stageDone = false; hintN = 0;
-  store.stage = i; saveStore();
-  $("btnPlay").classList.remove("pulse");
-  $("final").style.display = "none";
-  buildWorld(i);
-  STAGES[i].setup?.();
-  setLook(...STAGES[i].look.map((v) => v.clone()));
-  tool = "select";
-  refreshSel();
-  renderQuest();
-  renderStatus();
-}
-function emit(ev) {
-  if (stageDone || !STAGES[cur]) return;
-  if (STAGES[cur].check(ev)) complete();
-  else renderProgress();
-}
-function complete() {
-  stageDone = true;
-  if (!store.done.includes(cur)) store.done.push(cur);
-  saveStore();
-  renderQuest();
-  if (cur === MAIN - 1) {
-    lightPortal();
-    $("finalTitle").textContent = L.q.finalTitle;
-    $("finalText").textContent = L.q.final;
-    setTimeout(() => ($("final").style.display = "grid"), 900);
-  }
+const objProgress = (key, st) => `${L.q.obj[key]}: ${L.q.parts} ${st.ok}/${st.n} · ${mark(st.grouped)} ${L.ui.group} · ${mark(st.grouped && st.anchored)} ${L.ui.anchor}`;
+const task = () => (store.task1 ? 2 : 1);
+function renderScore() {
+  const b = builtKeys().length;
+  $("score").innerHTML = `<span title="${L.q.built}">🏗 ${b}/${OBJ_KEYS.length}</span><span title="${L.q.starsLbl}">⭐ ${store.stars.length}/${STARS.length}</span>`;
+  if (b !== lastBuilt) { if (lastBuilt >= 0 && b > lastBuilt) toast(L.q.builtToast.replace("{n}", b)); lastBuilt = b; }
 }
 function setBitImg(n) { $("qImg").src = `img/bit_${n}.jpg`; }
 function renderProgress() {
-  const s = STAGES[cur], el = $("qProg");
-  const t = s.progress ? s.progress() : "";
+  const el = $("qProg");
+  let t = "";
+  if (task() === 1) { const b = bestObj(); t = b ? objProgress(b.key, b.st) : ""; if (builtKeys().length) t = `✅ ${L.q.readyPlay}`; }
+  else { const b = bestObj(); t = b && b.st.ok ? objProgress(b.key, b.st) : ""; }
   el.textContent = t;
-  el.style.display = t && !stageDone ? "block" : "none";
+  el.style.display = t ? "block" : "none";
 }
-const stepLabel = (i) => (i >= MAIN ? L.q.bonus : L.q.stageOf.replace("{n}", i + 1).replace("{m}", MAIN));
 function renderQuest() {
-  const s = STAGES[cur], q = L.q, st = q.stages[cur];
+  const q = L.q, n = task(), st = q.tasks[n - 1];
   $("qChapter").textContent = q.title;
-  $("qStep").textContent = stepLabel(cur);
+  $("qStep").textContent = n === 1 ? q.taskOf.replace("{n}", 1) : q.optional;
   $("qTitle").textContent = fmt(st.t);
   $("qText").textContent = fmt(st.task);
-  setBitImg(stageDone ? (cur >= MAIN - 1 ? "proud" : "hello") : s.img);
+  setBitImg(n === 1 ? "think" : "hello");
   $("qHint").style.display = hintN ? "block" : "none";
   $("qHint").textContent = hintN ? st.hints.slice(0, hintN).map(fmt).join(" ") : "";
-  $("qDone").style.display = stageDone ? "block" : "none";
-  $("qDone").textContent = stageDone ? "✅ " + fmt(st.done) : "";
+  $("qDone").style.display = "none";
   $("qBack").textContent = q.back;
-  $("qPillText").textContent = `${stepLabel(cur)} · ${fmt(st.t)}`;
+  $("qPillText").textContent = fmt(st.t);
   $("hintBtn").textContent = q.hint;
-  $("hintBtn").style.display = stageDone || hintN >= st.hints.length ? "none" : "";
-  $("mapBtn").textContent = q.map;
-  $("restartBtn").textContent = q.restart;
-  $("nextBtn").style.display = stageDone && cur < MAIN ? "" : "none";
-  $("nextBtn").textContent = cur === MAIN - 1 ? fmt(q.stages[MAIN].t) + " →" : `${q.next} →`;
+  $("hintBtn").style.display = hintN >= st.hints.length ? "none" : "";
+  $("mapBtn").textContent = "↗ " + q.newTab;
+  $("restartBtn").textContent = resetArmed ? q.resetSure : q.resetAll;
+  $("restartBtn").classList.toggle("danger", resetArmed);
+  $("nextBtn").style.display = "none";
   for (const b of document.querySelectorAll(".rb.glow")) b.classList.remove("glow");
-  if (hintN >= 2 && !stageDone) for (const g of s.glow || []) $("rb_" + g)?.classList.add("glow");
-  if (hintN >= 1 && !stageDone && (cur === 1 || cur === 2)) $("btnPlay").classList.add("pulse");
+  if (hintN >= 2) for (const g of ["move", "rotate", "scale", "group", "anchor"]) $("rb_" + g)?.classList.add("glow");
   renderProgress();
+  renderScore();
 }
 function renderStatus() { $("status").textContent = playing ? L.q.helpPlay : L.q.help; }
-$("hintBtn").onclick = () => { hintN++; renderQuest(); };
-$("nextBtn").onclick = () => startStage(cur + 1);
-$("restartBtn").onclick = () => startStage(cur);
-
-// карта: все этапы открыты, пройденные отмечены звёздочкой
-function renderMap() {
-  const q = L.q;
-  $("mapTitle").textContent = q.title;
-  $("mapCh1").textContent = q.mapHint;
-  $("mapCh2").style.display = "none";
-  $("isles2").style.display = "none";
-  $("mapClose").textContent = q.close;
-  $("resetBtn").textContent = resetArmed ? q.resetSure : q.resetAll;
-  $("isles1").innerHTML = STAGES.map((s, i) => {
-    const done = store.done.includes(i);
-    return `<div class="isle ${done ? "done" : ""} ${i === cur ? "cur" : ""}" data-i="${i}"><b>${done ? "★" : i >= MAIN ? "+" : i + 1}</b>${fmt(q.stages[i].t)}</div>`;
-  }).join("");
+function emit(ev) {
+  if (ev === "play" && !store.task1 && builtKeys().length) {
+    store.task1 = true; saveStore();
+    hintN = 0;
+    setTimeout(() => { $("finalTitle").textContent = L.q.finalTitle; $("finalText").textContent = L.q.final; $("final").style.display = "grid"; }, 1200);
+    renderQuest();
+    return;
+  }
+  renderProgress();
+  renderScore();
 }
-$("mapBtn").onclick = () => { renderMap(); $("map").style.display = "grid"; };
-$("mapClose").onclick = () => ($("map").style.display = "none");
-$("map").addEventListener("click", (e) => {
-  const it = e.target.closest(".isle");
-  if (!it) return;
-  $("map").style.display = "none";
-  startStage(+it.dataset.i);
-});
+// звёзды собирают в Play, подойдя вплотную
+function collectStars(pos) {
+  for (const s of STARS) {
+    if (store.stars.includes(s.id)) continue;
+    const dx = pos.x - s.pos[0], dz = pos.z - s.pos[2], dy = pos.y + 2.5 - s.pos[1];
+    if (dx * dx + dz * dz < 6.5 && Math.abs(dy) < 4) {
+      store.stars.push(s.id); saveStore();
+      toast(L.q.starToast.replace("{n}", store.stars.length).replace("{m}", STARS.length));
+      renderScore();
+      if (store.stars.length === STARS.length && builtKeys().length === OBJ_KEYS.length) lightPortal();
+    }
+  }
+}
+$("hintBtn").onclick = () => { hintN++; renderQuest(); };
+// «В новой вкладке»: прогресс едет в адресе — встройка в уроке и вкладка не делят хранилище браузера
+function progressUrl() {
+  const u = new URL(location.href);
+  u.hash = "p=" + encodeURIComponent(JSON.stringify(store));
+  return u.toString();
+}
+function openNewTab() {
+  saveWorld();
+  const w = window.open(progressUrl(), "_blank");
+  if (!w) toast(L.q.popupBlocked);
+}
+$("mapBtn").onclick = openNewTab;
+let resetArmed = false, resetT = 0;
+$("restartBtn").onclick = () => {
+  if (!resetArmed) { resetArmed = true; renderQuest(); clearTimeout(resetT); resetT = setTimeout(() => { resetArmed = false; renderQuest(); }, 4000); return; }
+  resetArmed = false;
+  store = { v: 4, task1: false, stars: [], parts: null };
+  saveStore();
+  startWorld();
+};
 $("finalClose").onclick = () => ($("final").style.display = "none");
 $("qMin").onclick = () => document.body.classList.add("qmin");
 $("qPill").onclick = () => document.body.classList.remove("qmin");
-let resetArmed = false, resetT = 0;
-$("resetBtn").onclick = () => {
-  if (!resetArmed) { resetArmed = true; renderMap(); clearTimeout(resetT); resetT = setTimeout(() => { resetArmed = false; renderMap(); }, 4000); return; }
-  try { localStorage.removeItem(KEY); } catch (e) { /* нет хранилища */ }
-  store = { done: [], stage: 0 };
-  resetArmed = false;
-  $("map").style.display = "none";
-  startStage(0);
-};
-$("smallFull").onclick = () => { const el = document.documentElement; (el.requestFullscreen ? el.requestFullscreen() : Promise.reject()).catch(() => window.open(location.href, "_blank")); };
-$("smallTab").onclick = () => window.open(location.href, "_blank");
+$("smallFull").onclick = () => { const el = document.documentElement; (el.requestFullscreen ? el.requestFullscreen() : Promise.reject()).catch(openNewTab); };
+$("smallTab").onclick = openNewTab;
 $("smallAnyway").onclick = () => { smallDismissed = true; fit(); };
 document.addEventListener("fullscreenchange", fit);
+// другая вкладка мастерской сохранила прогресс — подхватываем
+window.addEventListener("storage", (e) => {
+  if (e.key !== KEY || playing || !e.newValue) return;
+  try { store = { ...store, ...JSON.parse(e.newValue) }; } catch (err) { return; }
+  startWorld(true);
+});
 
 let toastT = 0;
 function toast(msg) {
@@ -1233,6 +1271,19 @@ $("lang").addEventListener("change", (e) => {
 });
 
 // ---------- запуск ----------
+function startWorld(keepCamera = false) {
+  if (playing) { playing = false; scene.remove(char.group); char = null; renderStatus(); }
+  const cam = keepCamera ? [camera.position.clone(), camera.position.clone().add(camDir())] : null;
+  buildWorld();
+  loadWorld();
+  updateCalm();
+  lastBuilt = -1;
+  if (cam) setLook(...cam); else setLook(V(-6, 26, 34), V(36, 0, -2));
+  tool = "select";
+  refreshSel();
+  renderQuest();
+  renderStatus();
+}
 const clock = new THREE.Clock();
 let time = 0;
 function frame() {
@@ -1245,11 +1296,14 @@ function frame() {
   for (const a of animators) a(time, dt);
   renderer.render(scene, camera);
 }
+// прогресс из адреса (кнопка «В новой вкладке») важнее сохранённого здесь
+const hp = location.hash.match(/p=([^&]+)/);
+if (hp) {
+  try { store = { ...store, ...JSON.parse(decodeURIComponent(hp[1])) }; saveStore(); } catch (e) { /* испорченная ссылка — начинаем с сохранённого */ }
+  history.replaceState(null, "", location.pathname + location.search);
+}
 resize();
 applyLang();
-let startAt = Number.isInteger(store.stage) && STAGES[store.stage] ? store.stage : 0;
-if (store.done.includes(startAt) && startAt < MAIN - 1) startAt = STAGES.findIndex((s, i) => i > startAt && !store.done.includes(i));
-if (startAt < 0) startAt = MAIN - 1;
-startStage(startAt);
+startWorld();
 frame();
-window.__wb = { camera, tick(n) { for (let i = 0; i < n; i++) if (playing) stepPlay(1 / 60); }, keys, get charPos() { return char && char.group.position.toArray().map(r2); }, parts, get state() { return { cur, stageDone, parts: parts.length, playing, done: store.done }; }, startStage, emit, select, insert, play, stop, partsRef: () => parts, setTool, toggleAnchor, groupSel, byTag, syncMesh, fixed, objState, objParts, get char() { return char; }, setYaw(v) { camYaw = v; } };
+window.__wb = { camera, tick(n) { for (let i = 0; i < n; i++) if (playing) stepPlay(1 / 60); }, keys, get charPos() { return char && char.group.position.toArray().map(r2); }, get store() { return store; }, emit, select, insert, play, stop, partsRef: () => parts, setTool, toggleAnchor, groupSel, syncMesh, objState, objParts, builtKeys, progressUrl, startWorld, OBJS, get char() { return char; }, setYaw(v) { camYaw = v; } };
