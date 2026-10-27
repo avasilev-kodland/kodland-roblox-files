@@ -1,0 +1,190 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Bit's Workshop</title>
+<style>
+:root {
+  --bg: #1b1c1f; --panel: #232427; --ribbon: #2b2c30; --line: #3a3b40; --text: #e4e4e6; --dim: #8d8e94;
+  --accent: #3d8bff; --sel: #2f6fd6; --ok: #3ccf7a; --warn: #ffb547;
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; height: 100%; background: var(--bg); color: var(--text); font: 13px/1.35 "Inter", "Segoe UI", system-ui, sans-serif; overflow: hidden; user-select: none; }
+button { font: inherit; color: inherit; }
+#app { display: grid; grid-template-rows: 34px auto minmax(0, 1fr) 24px; width: 100vw; height: 100vh; transform-origin: 0 0; }
+
+/* top bar */
+#top { display: flex; align-items: center; gap: 6px; padding: 0 8px; background: var(--bg); border-bottom: 1px solid var(--line); }
+.tbtn { background: none; border: 1px solid transparent; border-radius: 4px; padding: 3px 9px; cursor: pointer; }
+.tbtn:hover { background: #303136; }
+#btnPlay, #btnStop { width: 28px; height: 24px; padding: 0; display: grid; place-items: center; }
+#btnPlay svg { fill: #4f8dff; } #btnStop svg { fill: #d23a3a; }
+#btnPlay.pulse { box-shadow: 0 0 0 2px var(--warn); animation: pulse 1.2s infinite; }
+@keyframes pulse { 50% { box-shadow: 0 0 0 4px rgba(255,181,71,.25); } }
+#tabs { flex: 1; display: flex; justify-content: center; gap: 4px; }
+.tab { padding: 4px 16px; border-radius: 5px; color: var(--dim); }
+.tab.on { background: #34353a; color: var(--text); }
+#lang { background: #2b2c30; border: 1px solid var(--line); color: var(--text); border-radius: 4px; padding: 2px 4px; }
+#fileMenu { position: absolute; background: #2b2c30; border: 1px solid var(--line); border-radius: 6px; padding: 4px; z-index: 30; min-width: 230px; box-shadow: 0 8px 24px rgba(0,0,0,.5); }
+#fileMenu div { padding: 6px 10px; border-radius: 4px; cursor: pointer; }
+#fileMenu div:hover { background: var(--sel); }
+#fileMenu .off { color: var(--dim); cursor: default; } #fileMenu .off:hover { background: none; }
+#fileMenu hr { border: 0; border-top: 1px solid var(--line); margin: 4px 0; }
+
+/* ribbon */
+#ribbon { display: flex; align-items: stretch; gap: 0; padding: 4px 6px; background: var(--ribbon); border-bottom: 1px solid var(--line); overflow-x: auto; overflow-y: hidden; scrollbar-width: thin; }
+#ribbon::-webkit-scrollbar { height: 5px; } #ribbon::-webkit-scrollbar-thumb { background: #4a4c54; border-radius: 3px; }
+.rb { position: relative; flex: none; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px; min-width: 48px; padding: 2px 5px; border-radius: 5px; background: none; border: 0; cursor: pointer; }
+.rb:hover { background: #393a40; }
+.rb.on { background: #3b4a66; }
+.rb.off { opacity: .38; cursor: default; } .rb.off:hover { background: none; }
+.rb svg { width: 22px; height: 22px; stroke: #d9dade; fill: none; stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; }
+.rb span { font-size: 11px; white-space: nowrap; }
+.rb .dd { position: absolute; right: 1px; top: 9px; font-size: 9px; color: var(--dim); padding: 2px; border-radius: 3px; }
+.rb .dd:hover { background: #50525a; color: #fff; }
+.sep { flex: none; width: 1px; background: var(--line); margin: 4px 4px; }
+.rb.glow { box-shadow: 0 0 0 2px var(--warn) inset; }
+.pop { position: absolute; z-index: 40; background: #2b2c30; border: 1px solid var(--line); border-radius: 6px; padding: 6px; box-shadow: 0 8px 24px rgba(0,0,0,.5); }
+.pop .item { padding: 6px 10px; border-radius: 4px; cursor: pointer; display: flex; gap: 8px; align-items: center; }
+.pop .item:hover { background: var(--sel); }
+#colorPop { display: grid; grid-template-columns: repeat(8, 22px); gap: 4px; }
+#colorPop i { width: 22px; height: 22px; border-radius: 3px; cursor: pointer; border: 1px solid rgba(0,0,0,.4); }
+#colorPop i:hover { outline: 2px solid #fff; }
+#matPop { display: grid; grid-template-columns: repeat(4, 64px); gap: 6px; }
+#matPop .m { display: flex; flex-direction: column; align-items: center; gap: 3px; cursor: pointer; padding: 4px; border-radius: 5px; font-size: 10px; }
+#matPop .m:hover { background: var(--sel); }
+#matPop .m b { width: 34px; height: 34px; border-radius: 50%; display: block; }
+
+/* main */
+#main { position: relative; display: grid; grid-template-columns: minmax(0, 1fr) 210px 210px; min-height: 0; }
+body.noProps #main { grid-template-columns: minmax(0, 1fr) 210px; } body.noProps #propsPane { display: none; }
+body.noExp #main { grid-template-columns: minmax(0, 1fr) 210px; } body.noExp #explorerPane { display: none; }
+body.noProps.noExp #main { grid-template-columns: minmax(0, 1fr); }
+
+#view { position: relative; min-width: 0; min-height: 0; overflow: hidden; background: #87b7e3; }
+#view canvas { position: absolute; inset: 0; display: block; width: 100%; height: 100%; outline: none; }
+.side { background: var(--panel); border-left: 1px solid var(--line); display: flex; flex-direction: column; min-height: 0; }
+.side h3 { margin: 0; padding: 6px 10px; font-size: 12px; font-weight: 600; text-align: center; border-bottom: 1px solid var(--line); background: #26272b; }
+.side .body { overflow: auto; flex: 1; padding: 4px 0; }
+.ex { padding: 2px 8px; white-space: nowrap; cursor: pointer; display: flex; align-items: center; gap: 5px; }
+.ex:hover { background: #2f3035; }
+.ex.on { background: var(--sel); }
+.ex.svc { color: var(--dim); cursor: default; } .ex.svc:hover { background: none; }
+.ex .ic { width: 12px; height: 12px; border-radius: 3px; flex: none; }
+.pr { display: grid; grid-template-columns: 96px 1fr; align-items: center; gap: 6px; padding: 3px 10px; border-bottom: 1px solid #2c2d31; }
+.pr label { color: #b9bac0; overflow: hidden; text-overflow: ellipsis; }
+.pr input[type=number], .pr input[type=text], .pr select { width: 100%; background: #1b1c1f; border: 1px solid var(--line); color: var(--text); border-radius: 3px; padding: 2px 4px; font: inherit; }
+.pr .three { display: grid; grid-template-columns: repeat(3, 1fr); gap: 3px; }
+.pr .sw { width: 16px; height: 16px; border-radius: 3px; display: inline-block; vertical-align: middle; margin-right: 6px; border: 1px solid #000; }
+.pr.glow { box-shadow: inset 3px 0 0 var(--warn); }
+.empty { color: var(--dim); padding: 10px; text-align: center; }
+
+/* status */
+#status { display: flex; align-items: center; padding: 0 10px; text-overflow: ellipsis; color: var(--dim); background: var(--bg); border-top: 1px solid var(--line); font-size: 12px; white-space: nowrap; overflow: hidden; }
+
+/* quest card */
+#quest { position: absolute; left: 12px; bottom: 12px; width: min(440px, calc(100% - 24px)); background: rgba(24,25,29,.94); border: 1px solid #44464d; border-radius: 12px; padding: 12px; display: grid; grid-template-columns: 64px 1fr; gap: 10px; box-shadow: 0 10px 30px rgba(0,0,0,.45); }
+#quest img { width: 64px; height: 64px; border-radius: 12px; }
+#qHead { font-size: 11px; color: var(--dim); display: flex; justify-content: space-between; gap: 8px; padding-right: 22px; }
+#qTitle { font-size: 15px; font-weight: 700; margin: 2px 0 4px; }
+#qText { font-size: 13px; }
+#qHint { margin-top: 6px; padding: 6px 8px; background: #2c2e35; border-radius: 6px; font-size: 12px; display: none; }
+#qProg { margin-top: 6px; font-size: 12px; color: var(--warn); display: none; }
+#qDone { margin-top: 6px; color: var(--ok); font-weight: 600; display: none; }
+#qBack { margin-top: 6px; font-size: 11px; color: var(--dim); }
+#qBtns { grid-column: 1 / -1; display: flex; gap: 6px; flex-wrap: wrap; }
+.qb { background: #34363d; border: 1px solid #4a4c54; border-radius: 6px; padding: 5px 10px; cursor: pointer; }
+.qb:hover { background: #40434b; }
+.qb.main { background: var(--accent); border-color: var(--accent); color: #fff; font-weight: 600; }
+#nameRow { display: none; gap: 6px; margin-top: 6px; }
+#nameRow input { flex: 1; background: #1b1c1f; border: 1px solid var(--line); color: var(--text); border-radius: 5px; padding: 5px 8px; font: inherit; }
+
+/* map */
+#map { position: absolute; inset: 0; background: rgba(10,12,18,.82); display: none; place-items: center; z-index: 50; }
+#map .box { background: #1f2026; border: 1px solid #44464d; border-radius: 14px; padding: 18px 22px; width: min(720px, 94%); max-height: 94%; overflow: auto; }
+#map h2 { margin: 0 0 12px; font-size: 18px; }
+#map h4 { margin: 14px 0 8px; font-size: 13px; display: flex; gap: 8px; align-items: baseline; }
+#map h4 small { color: var(--warn); font-weight: 400; }
+.isles { display: flex; gap: 10px; flex-wrap: wrap; }
+.isle { width: 98px; padding: 8px 6px; border-radius: 12px; background: #2a2c33; border: 2px solid #3a3c44; text-align: center; cursor: pointer; font-size: 11px; }
+.isle b { display: block; font-size: 18px; margin-bottom: 2px; }
+.isle.done { border-color: var(--ok); background: #1f3a2c; }
+.isle.cur { border-color: var(--warn); }
+.isle.lock { opacity: .4; cursor: default; }
+
+#toast { position: absolute; left: 50%; top: 14px; transform: translateX(-50%); background: rgba(20,20,24,.92); border: 1px solid #44464d; border-radius: 8px; padding: 7px 14px; display: none; z-index: 45; max-width: 80%; text-align: center; }
+#final { position: absolute; inset: 0; display: none; place-items: center; background: rgba(10,12,18,.55); z-index: 48; }
+#final .box { background: #1f2026; border: 2px solid var(--ok); border-radius: 14px; padding: 18px 22px; width: min(520px, 92%); display: grid; grid-template-columns: 80px 1fr; gap: 14px; }
+#final img { width: 80px; height: 80px; border-radius: 14px; }
+#final h2 { margin: 0 0 6px; }
+#small { position: fixed; inset: 0; display: none; place-items: center; background: rgba(12,14,20,.86); z-index: 70; padding: 16px; }
+#small .box { max-width: 380px; text-align: center; font-size: 15px; }
+#small img { width: 72px; height: 72px; border-radius: 14px; }
+#small .row { display: flex; gap: 8px; justify-content: center; flex-wrap: wrap; margin: 12px 0 8px; }
+#small .qb { font-size: 14px; padding: 8px 12px; }
+#err { position: absolute; inset: 0; display: none; place-items: center; text-align: center; padding: 20px; background: #1b1c1f; z-index: 60; }
+
+#qMin { position: absolute; right: 8px; top: 6px; background: none; border: 0; color: var(--dim); font-size: 16px; cursor: pointer; padding: 2px 6px; }
+#qPill { position: absolute; left: 10px; bottom: 10px; display: none; background: rgba(24,25,29,.94); border: 1px solid #44464d; border-radius: 999px; padding: 4px 12px 4px 4px; gap: 8px; align-items: center; cursor: pointer; font-weight: 600; }
+#qPill img { width: 30px; height: 30px; border-radius: 50%; }
+body.qmin #quest { display: none; } body.qmin #qPill { display: flex; }
+#qBack.wait { color: var(--warn); font-weight: 600; font-size: 12px; }
+#remind { position: absolute; left: 50%; top: 12px; transform: translateX(-50%); width: min(460px, calc(100% - 20px)); background: #3a2d10; border: 1px solid var(--warn); color: #ffe2a8; border-radius: 10px; padding: 9px 12px; display: none; z-index: 46; font-weight: 600; cursor: pointer; }
+.qb.danger { color: #ffb4b4; }
+</style>
+<script type="importmap">
+{ "imports": {
+  "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+  "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+} }
+</script>
+</head>
+<body>
+<div id="app">
+  <div id="top">
+    <button class="tbtn" id="btnFile" data-t="ui.file">File</button>
+    <button class="tbtn" id="btnPlay" title="Play"><svg width="14" height="14" viewBox="0 0 14 14"><path d="M3 1.5v11l9-5.5z"/></svg></button>
+    <button class="tbtn" id="btnStop" title="Stop"><svg width="12" height="12" viewBox="0 0 12 12"><rect x="1" y="1" width="10" height="10" rx="1"/></svg></button>
+    <div id="tabs"><span class="tab on" data-t="ui.home">Home</span><span class="tab" data-t="ui.model">Model</span></div>
+    <select id="lang" title="Language"><option value="en">EN</option><option value="pl">PL</option><option value="it">IT</option><option value="ru">RU</option></select>
+  </div>
+  <div id="ribbon"></div>
+  <div id="main">
+    <div id="view">
+      <div id="quest">
+        <button id="qMin" title="–">–</button>
+        <img id="qImg" src="img/bit_hello.jpg" alt="Bit">
+        <div>
+          <div id="qHead"><span id="qChapter"></span><span id="qStep"></span></div>
+          <div id="qTitle"></div>
+          <div id="qText"></div>
+          <div id="nameRow"><input id="nameInput" maxlength="28"><button class="qb main" id="nameBtn"></button></div>
+          <div id="qProg"></div>
+          <div id="qHint"></div>
+          <div id="qDone"></div>
+          <div id="qBack"></div>
+        </div>
+        <div id="qBtns">
+          <button class="qb" id="hintBtn"></button>
+          <button class="qb" id="mapBtn"></button>
+          <button class="qb" id="restartBtn"></button>
+          <button class="qb main" id="nextBtn" style="display:none"></button>
+        </div>
+      </div>
+      <div id="toast"></div>
+      <div id="qPill"><img src="img/bit_hello.jpg" alt=""><span id="qPillText"></span></div>
+      <div id="remind"></div>
+    </div>
+    <div class="side" id="propsPane"><h3 data-t="ui.properties">Properties</h3><div class="body" id="props"></div></div>
+    <div class="side" id="explorerPane"><h3 data-t="ui.explorer">Explorer</h3><div class="body" id="explorer"></div></div>
+  </div>
+  <div id="status"></div>
+</div>
+<div id="map"><div class="box"><h2 id="mapTitle"></h2><h4 id="mapCh1"></h4><div class="isles" id="isles1"></div><h4 id="mapCh2"></h4><div class="isles" id="isles2"></div><div style="display:flex;justify-content:space-between;gap:8px;margin-top:14px;flex-wrap:wrap"><button class="qb danger" id="resetBtn"></button><button class="qb" id="mapClose"></button></div></div></div>
+<div id="final"><div class="box"><img src="img/bit_proud.jpg" alt="Bit"><div><h2 id="finalTitle"></h2><p id="finalText"></p><button class="qb main" id="finalClose">OK</button></div></div></div>
+<div id="small"><div class="box"><img src="img/bit_think.jpg" alt=""><p id="smallText"></p><div class="row"><button class="qb main" id="smallFull"></button><button class="qb" id="smallTab"></button></div><button class="qb" id="smallAnyway"></button></div></div>
+<div id="err">The workshop needs a browser with WebGL (Chrome, Edge, Firefox or Safari).</div>
+<script type="module" src="app.js"></script>
+</body>
+</html>
