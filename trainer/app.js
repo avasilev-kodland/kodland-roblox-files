@@ -21,6 +21,12 @@ const KEY = "bitWorkshop.v5"; // v1–v4 — прежние версии, их �
 let store = { v: 5, task: 0, stars: [], parts: null };
 try { Object.assign(store, JSON.parse(localStorage.getItem(KEY)) || {}); } catch (e) { /* без хранилища тоже работает */ }
 if (!Array.isArray(store.stars)) store.stars = [];
+// Встройка в уроке BO с чужого сайта (не kodland.org) идёт в песочнице с одноразовым хранилищем:
+// после перезагрузки прогресс пропадает. Предупреждаем ученика и советуем открыть мастерскую в новой вкладке.
+const NO_SAVE = (() => {
+  if (window.credentialless === true || self.origin === "null") return true;
+  try { localStorage.setItem(KEY + ".t", "1"); const ok = localStorage.getItem(KEY + ".t") === "1"; localStorage.removeItem(KEY + ".t"); return !ok; } catch (e) { return true; }
+})();
 function saveStore() { try { localStorage.setItem(KEY, JSON.stringify(store)); } catch (e) { /* приватное окно */ } }
 
 // ---------- сцена ----------
@@ -1175,7 +1181,8 @@ function renderQuest() {
   $("qHint").textContent = hintN ? st.hints.slice(0, hintN).map(fmt).join(" ") : "";
   $("qDone").style.display = taskDone ? "block" : "none";
   $("qDone").textContent = taskDone ? "✅ " + fmt(st.done) : "";
-  $("qBack").textContent = q.back;
+  $("qBack").textContent = NO_SAVE ? q.noSave : q.back;
+  $("qBack").classList.toggle("wait", NO_SAVE);
   $("qPillText").textContent = fmt(st.t);
   $("hintBtn").textContent = q.hint;
   $("hintBtn").style.display = taskDone || hintN >= st.hints.length ? "none" : "";
