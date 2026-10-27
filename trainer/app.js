@@ -1,6 +1,6 @@
 // Мастерская Бита — тренажёр Roblox Studio для урока М1У1.
-// Один путь, как в уроке: камера → мост (Anchor) → Move, Rotate, Scale на вещах мастерской → Group + Anchor → сохранение.
-// Потом по желанию ⭐ свой объект из деталей.
+// Те же задания, что в уроке: мост (Anchor) → мастерская → собрать одну вещь своего уровня (Move, Rotate, Scale, Group, Anchor) → сохранение.
+// Потом по желанию ⭐ Звёздная тропа.
 import * as THREE from "three";
 import { TransformControls } from "three/addons/controls/TransformControls.js";
 import { ConvexGeometry } from "three/addons/geometries/ConvexGeometry.js";
@@ -17,8 +17,8 @@ const navLang = (navigator.language || "").slice(0, 2).toLowerCase();
 let lang = LANGS.includes(params.get("lang")) ? params.get("lang") : LANGS.includes(navLang) ? navLang : "en";
 let L = T(lang);
 
-const KEY = "bitWorkshop.v2"; // v1 — прежний квест с мостами, его прогресс не подходит
-let store = { done: [], stage: 0, own: null };
+const KEY = "bitWorkshop.v3"; // v1, v2 — прежние квесты, их прогресс не подходит
+let store = { done: [], stage: 0 };
 try { Object.assign(store, JSON.parse(localStorage.getItem(KEY)) || {}); } catch (e) { /* без хранилища тоже работает */ }
 function saveStore() { try { localStorage.setItem(KEY, JSON.stringify(store)); } catch (e) { /* приватное окно */ } }
 
@@ -324,12 +324,28 @@ function glitchPixels(cx, cy, cz, n = 10, spread = 2.5, key = "holes") {
 }
 
 // ---------- мир: Хаб, мост и мастерская Бита ----------
-// Мастерская — правый остров. Глюк сломал мост (стёр Anchored) и три вещи: у фонаря сбросил шар,
-// у указателя повернул табличку, у скамейки сжал сиденье. Светящийся контур показывает, как было.
-const LAMP = { x: 22, z: -12, ballStart: [26, 1.2, -8], ball: [22, 9.2, -12] };
-const SIGN = { x: 34, z: -12, pos: [34, 5, -11.6] };
-const BENCH = { x: 46, z: -12, start: [2, 1, 1], size: [6, 1, 2], pos: [46, 2.1, -12] };
-const OWN = { x: 50, z: 9 };
+// Как в уроке: мост без Anchored, в мастерской три разобранные вещи разного уровня
+// (🟢 фонарь и 🟡 скамейка — со светящимся контуром, 🔴 указатель — по образцу рядом) и ⭐ Звёздная тропа к островку со звездой.
+// Детали — {name, size, pos, rot} собранного вида и start — где лежат сейчас. locked — стоит на месте.
+const OBJS = {
+  lamp: { level: 1, pad: [22, -12], ghost: true, parts: [
+    { name: "Base", size: [3, 1, 3], pos: [22, 0.5, -12], color: "#3b3b40", material: "Basalt", locked: true },
+    { name: "Post", size: [1, 7, 1], pos: [22, 4.5, -12], color: "#3b3b40", material: "Basalt", start: { pos: [26, 0.5, -7], rot: [0, 0, 90] } },
+    { name: "Lamp", shape: "Sphere", size: [2.4, 2.4, 2.4], pos: [22, 9.2, -12], color: "#ffd84a", material: "Neon", start: { pos: [17, 1.2, -8] } },
+  ] },
+  bench: { level: 2, pad: [36, -12], ghost: true, parts: [
+    { name: "Leg", size: [0.8, 1.6, 1.8], pos: [33.8, 0.8, -12], color: "#5a3a22", material: "WoodPlanks", locked: true },
+    { name: "Leg", size: [0.8, 1.6, 1.8], pos: [38.2, 0.8, -12], color: "#5a3a22", material: "WoodPlanks", start: { pos: [40, 0.4, -6], rot: [0, 0, 90] } },
+    { name: "Seat", size: [6, 1, 2], pos: [36, 2.1, -12], color: "#b07a44", material: "WoodPlanks", start: { pos: [32, 0.5, -6], size: [2, 1, 1] } },
+  ] },
+  sign: { level: 3, pad: [50, -12], ghost: false, parts: [
+    { name: "Post", size: [0.8, 6, 0.8], pos: [50, 3, -12], color: "#7b4f2c", material: "WoodPlanks", start: { pos: [54, 0.4, -6], rot: [0, 0, 90] } },
+    { name: "Sign", size: [4, 1.6, 0.4], pos: [50, 5, -11.4], color: "#d9b26a", material: "WoodPlanks", start: { pos: [47, 0.2, -6], rot: [90, 0, 0] } },
+    { name: "Top", shape: "Sphere", size: [1.2, 1.2, 1.2], pos: [50, 6.6, -12], color: "#5ff3ff", material: "Neon", start: { pos: [51, 0.6, -4] } },
+  ] },
+};
+const PATH = { stones: [[40, 0.5, 25], [40, 1.5, 30], [40, 2.5, 35], [40, 3.5, 40]],
+  start: [{ pos: [34, 0.5, 15], rot: [0, 30, 0] }, { pos: [41, 2, 16], rot: [0, 0, 90] }, { pos: [46, 0.5, 14], size: [2, 1, 2] }, { pos: [37, 0.5, 19] }] };
 let portalMat, portalLight;
 function ghost(shape, size, pos, rot = [0, 0, 0]) {
   const g = new THREE.Group();
@@ -344,11 +360,31 @@ function ghost(shape, size, pos, rot = [0, 0, 0]) {
   animators.push((t) => { fill.material.opacity = 0.34 + Math.sin(t * 3) * 0.1; });
   return g;
 }
-function pad(x, z, r = 4.2, color = "#8d939b") {
-  const m = new THREE.Mesh(new THREE.CylinderGeometry(r, r, 0.12, 40), sm(color, { roughness: 0.9 }));
-  m.position.set(x, 0.06, z);
-  m.receiveShadow = true;
-  addStatic(m, false);
+const LEVEL_COLOR = { 1: "#5fcf7a", 2: "#f2c94c", 3: "#ef6a5a" };
+function pad(x, z, level) {
+  const ring = new THREE.Mesh(new THREE.CylinderGeometry(4.6, 4.6, 0.1, 40), sm(LEVEL_COLOR[level], { roughness: 0.9 }));
+  ring.position.set(x, 0.05, z);
+  const m = new THREE.Mesh(new THREE.CylinderGeometry(4.1, 4.1, 0.14, 40), sm("#8d939b", { roughness: 0.9 }));
+  m.position.set(x, 0.07, z);
+  for (const o of [ring, m]) { o.receiveShadow = true; addStatic(o, false); }
+}
+// образец 🔴 указателя: маленькая собранная копия на подставке рядом с площадкой
+function miniSample(o) {
+  const k = 0.35, [px, pz] = o.pad, base = V(px + 6.5, 1.6, pz + 3);
+  const stand = new THREE.Mesh(new THREE.BoxGeometry(2.4, 1.6, 2.4), sm("#6d6a66"));
+  stand.position.set(base.x, 0.8, base.z);
+  addStatic(stand);
+  const g = new THREE.Group();
+  g.position.copy(base);
+  for (const d of o.parts) {
+    const m = new THREE.Mesh(geo(d.shape || "Block"), makeMat({ ...d, transparency: 0 }));
+    m.scale.fromArray(d.size.map((v) => v * k));
+    m.position.set((d.pos[0] - px) * k, d.pos[1] * k, (d.pos[2] - pz) * k);
+    m.castShadow = true;
+    g.add(m);
+  }
+  addStatic(g, false);
+  animators.push((t) => { g.rotation.y = Math.sin(t * 0.6) * 0.5; });
 }
 // stage — номер этапа: всё, что чинили раньше, уже починено
 function buildWorld(stage) {
@@ -376,58 +412,73 @@ function buildWorld(stage) {
   portalLight.position.set(-49, 6, 0);
   scene.add(portalLight);
   decor.push(portalLight);
-  // мастерская
-  for (const o of [LAMP, SIGN, BENCH]) pad(o.x, o.z);
-  pad(OWN.x, OWN.z, 6, "#a4a9b0");
-  const crate = new THREE.Mesh(new THREE.BoxGeometry(3, 2.4, 3), makeMat({ color: "#9c6a3c", material: "WoodPlanks", transparency: 0, size: [3, 2.4, 3] }));
-  crate.position.set(OWN.x + 8, 1.2, OWN.z + 1);
-  addStatic(crate);
-  const rock = new THREE.Mesh(new THREE.DodecahedronGeometry(6, 0), sm("#8a8c90", { flatShading: true }));
-  rock.position.set(60, 4.5, -8);
-  addStatic(rock);
-  placeBit(30, 7, -Math.PI / 2);
+  // островок со звездой за мастерской
+  const top = new THREE.Mesh(new THREE.BoxGeometry(11, 2, 11), new THREE.MeshStandardMaterial({ color: "#5fa83c", roughness: 1, map: TEX.Grass.clone() }));
+  top.material.map.needsUpdate = true;
+  top.position.set(40, 4, 48.5);
+  addStatic(top);
+  const rockS = new THREE.Mesh(new THREE.ConeGeometry(5.2, 12, 7), sm("#6d6a66", { flatShading: true }));
+  rockS.rotation.x = Math.PI;
+  rockS.position.set(40, -3, 48.5);
+  addStatic(rockS, false);
+  const star = new THREE.Mesh(geo("Star"), new THREE.MeshStandardMaterial({ color: "#ffd84a", emissive: "#ffcc00", emissiveIntensity: 1.3 }));
+  star.scale.setScalar(3.4);
+  star.position.set(40, 8, 49);
+  addStatic(star, false);
+  animators.push((t) => { star.rotation.y = t * 1.5; star.position.y = 8 + Math.sin(t * 2) * 0.3; });
+  placeBit(26, 6, -Math.PI / 2);
   for (const [x, z, h] of [[-58, -16, 9], [-50, 15, 8], [-20, -17, 7], [64, 17, 8], [16, 18, 7], [67, -19, 8], [14, -19, 7]]) tree(x, z, h);
   farIsland(-150, 25, -180, 24); farIsland(170, 15, -140, 18); farIsland(30, 50, -250, 30); farIsland(-60, -10, 190, 18);
   // мост
-  for (let i = 0; i < 10; i++) addPart({ name: "Plank", model: "Bridge", size: [1.9, 0.6, 6], pos: [-9 + i * 2, -0.3, 0], color: "#9c6a3c", material: "WoodPlanks", anchored: stage > 2 });
-  // фонарь
-  const W = { folder: "Workshop" };
-  addPart({ ...W, name: "Base", size: [3, 1, 3], pos: [LAMP.x, 0.5, LAMP.z], color: "#3b3b40", material: "Basalt", anchored: true, locked: true, tag: "lampBase", model: stage > 6 ? "Model" : null });
-  addPart({ ...W, name: "Post", size: [1, 7, 1], pos: [LAMP.x, 4.5, LAMP.z], color: "#3b3b40", material: "Basalt", anchored: true, locked: true, tag: "lampPost", model: stage > 6 ? "Model" : null });
-  addPart({ ...W, name: "Lamp", shape: "Sphere", size: [2.4, 2.4, 2.4], pos: stage > 3 ? LAMP.ball : LAMP.ballStart, color: "#ffd84a", material: "Neon", anchored: stage > 6, tag: "lampBall", model: stage > 6 ? "Model" : null });
-  ghost("Sphere", [2.4, 2.4, 2.4], LAMP.ball);
-  // указатель
-  addPart({ ...W, name: "Post", size: [0.8, 6, 0.8], pos: [SIGN.x, 3, SIGN.z], color: "#7b4f2c", material: "WoodPlanks", anchored: true, locked: true });
-  addPart({ ...W, name: "Sign", size: [4, 1.6, 0.4], pos: SIGN.pos, rot: stage > 4 ? [0, 0, 0] : [90, 0, 0], color: "#d9b26a", material: "WoodPlanks", anchored: true, tag: "sign" });
-  ghost("Block", [4, 1.6, 0.4], SIGN.pos);
-  // скамейка
-  for (const dx of [-2.2, 2.2]) addPart({ ...W, name: "Leg", size: [0.8, 1.6, 1.8], pos: [BENCH.x + dx, 0.8, BENCH.z], color: "#5a3a22", material: "WoodPlanks", anchored: true, locked: true });
-  addPart({ ...W, name: "Seat", size: stage > 5 ? BENCH.size : BENCH.start, pos: BENCH.pos, color: "#b07a44", material: "WoodPlanks", anchored: true, tag: "seat" });
-  ghost("Block", BENCH.size, BENCH.pos);
-  // звезда за скалой — только для этапа с камерой
-  if (stage === 0) {
-    const s = addPart({ name: "Star", shape: "Star", size: [3, 3, 3], pos: [64, 4, -15], rot: [0, -60, 0], color: "#ffd84a", material: "Neon", anchored: true, locked: true, tag: "star" });
-    animators.push((t) => { s.mesh.rotation.y = t; });
+  for (let i = 0; i < 10; i++) addPart({ name: "Plank", model: "Bridge", size: [1.9, 0.6, 6], pos: [-9 + i * 2, -0.3, 0], color: "#9c6a3c", material: "WoodPlanks", anchored: stage > 1 });
+  // вещи мастерской; после этапа сборки фонарь уже собран (как у ученика после урока)
+  for (const [key, o] of Object.entries(OBJS)) {
+    pad(o.pad[0], o.pad[1], o.level);
+    const done = stage > 3 && key === "lamp";
+    for (const d of o.parts) {
+      const s = !done && d.start ? d.start : {};
+      addPart({ folder: "Workshop", obj: key, name: d.name, shape: d.shape || "Block", color: d.color, material: d.material,
+        size: s.size || d.size, pos: s.pos || d.pos, rot: s.rot || [0, 0, 0], anchored: !!d.locked || done, locked: !!d.locked, model: done ? "Model" : null });
+      if (o.ghost) ghost(d.shape || "Block", d.size, d.pos);
+    }
+    if (!o.ghost) miniSample(o);
   }
-  if (stage === 8 && store.own) for (const d of store.own) addPart(d);
+  // ⭐ камни тропы лежат в мастерской
+  PATH.stones.forEach((pos, i) => {
+    const s = PATH.start[i];
+    addPart({ folder: "Star path", obj: "path", name: "Stone", size: s.size || [4, 1, 4], pos: s.pos, rot: s.rot || [0, 0, 0], color: "#9aa0a8", material: "Basalt" });
+    ghost("Block", [4, 1, 4], pos);
+  });
   glitchPixels(0, 0.4, 0, 9, 4, "bridge");
-  glitchPixels(LAMP.x, 6, LAMP.z, 7, 2, "lamp");
-  glitchPixels(SIGN.x, 4.5, SIGN.z, 7, 2, "sign");
-  glitchPixels(BENCH.x, 2, BENCH.z, 7, 2, "bench");
+  for (const [key, o] of Object.entries(OBJS)) glitchPixels(o.pad[0], 2, o.pad[1], 6, 2, key);
+  glitchPixels(40, 1.5, 32, 7, 3, "path");
   updateCalm();
 }
-const near = (a, b, tol) => a.every((v, i) => Math.abs(v - b[i]) <= tol);
-const fixed = {
-  bridge: () => parts.some((p) => p.model === "Bridge") && parts.filter((p) => p.model === "Bridge").every((p) => p.anchored),
-  lamp: () => { const b = byTag("lampBall"); return !!b && near(b.pos, LAMP.ball, 1.1); },
-  sign: () => {
-    const s = byTag("sign"); if (!s) return false;
-    const up = V(0, 1, 0).applyQuaternion(s.mesh.quaternion), fw = V(0, 0, 1).applyQuaternion(s.mesh.quaternion);
-    return Math.abs(up.y) > 0.96 && Math.abs(fw.z) > 0.96 && near(s.pos, SIGN.pos, 1.1);
-  },
-  bench: () => { const s = byTag("seat"); return !!s && near(s.size, BENCH.size, 0.6) && near(s.pos, BENCH.pos, 1.1); },
-};
-function updateCalm() { for (const k of ["bridge", "lamp", "sign", "bench"]) calm[k] = fixed[k](); }
+// деталь на месте: её габариты совпадают с собранным видом (так проверяются и Move, и Rotate, и Scale)
+const tmpB = new THREE.Box3(), tgtV = V(), sizeV = V();
+function placed(p, d) {
+  partBox(p, tmpB);
+  const c = tmpB.getCenter(tgtV), s = tmpB.getSize(sizeV);
+  return Math.abs(c.x - d.pos[0]) <= 1.1 && Math.abs(c.y - d.pos[1]) <= 1.1 && Math.abs(c.z - d.pos[2]) <= 1.1 &&
+    Math.abs(s.x - d.size[0]) <= 0.7 && Math.abs(s.y - d.size[1]) <= 0.7 && Math.abs(s.z - d.size[2]) <= 0.7;
+}
+const objParts = (key) => parts.filter((p) => p.obj === key);
+function objState(key) {
+  const list = objParts(key);
+  const targets = key === "path" ? PATH.stones.map((pos) => ({ pos, size: [4, 1, 4] })) : OBJS[key].parts;
+  // камни тропы одинаковые — подходит любой камень на любой контур
+  const used = new Set();
+  let ok = 0;
+  for (const d of targets) { const p = list.find((x) => !used.has(x) && placed(x, d)); if (p) { used.add(p); ok++; } }
+  const grouped = list.length > 0 && list.every((p) => p.model) && new Set(list.map((p) => p.model)).size === 1;
+  return { ok, n: targets.length, grouped, anchored: list.every((p) => p.anchored) };
+}
+const fixedAll = (st) => st.ok === st.n && st.grouped && st.anchored;
+const fixed = { bridge: () => parts.some((p) => p.model === "Bridge") && parts.filter((p) => p.model === "Bridge").every((p) => p.anchored) };
+function updateCalm() {
+  calm.bridge = fixed.bridge();
+  for (const k of [...Object.keys(OBJS), "path"]) calm[k] = objState(k).ok === objState(k).n;
+}
 function lightPortal() {
   calm.portal = true;
   portalMat.emissive.set("#5ff3ff");
@@ -631,10 +682,6 @@ function onChange() {
   renderProps();
   renderRibbonState();
   updateCalm();
-  if (cur === MAIN) {
-    clearTimeout(saveTimer);
-    saveTimer = setTimeout(() => { if (!playing) { store.own = userParts().map(ser); saveStore(); } }, 300);
-  }
   emit("change");
 }
 
@@ -729,6 +776,7 @@ function stepPlay(dt) {
   g.position.y += dy;
   if (g.position.y < -90) { g.position.copy(world.spawn); c.vy = 0; }
   if (c.grounded && g.position.x > 13 && !c.reached) { c.reached = true; emit("reach"); }
+  if (c.grounded && g.position.z > 43 && g.position.y > 4 && !c.star) { c.star = true; emit("star"); }
   // камера за спиной
   const target = g.position.clone().add(V(0, 4, 0));
   const back = V(Math.sin(camYaw) * Math.cos(0.38), Math.sin(0.38), Math.cos(camYaw) * Math.cos(0.38));
@@ -1012,41 +1060,34 @@ $("props").addEventListener("change", (e) => {
     else if (v !== "") p[k] = v;
   });
 });
-// ---------- квест: один путь, как в уроке ----------
-// 0 камера → 1 мост падает → 2 Anchor и пройти в мастерскую → 3 Move → 4 Rotate → 5 Scale → 6 Group + Anchor + Play → 7 сохранение.
-// 8 — ⭐ свой объект (по желанию). Любой этап можно открыть с карты: мир собирается так, будто прошлые этапы пройдены.
-const userParts = () => parts.filter((p) => p.user);
-const lampParts = () => ["lampBase", "lampPost", "lampBall"].map(byTag);
-const lampGrouped = () => { const l = lampParts(); return l.every((p) => p && p.model) && new Set(l.map((p) => p.model)).size === 1; };
-const lampAnchored = () => lampParts().every((p) => p && p.anchored);
-function ownModel() {
-  const models = [...new Set(userParts().filter((p) => p.model).map((p) => p.model))];
-  let best = { n: 0, a: false };
-  for (const m of models) {
-    const kids = parts.filter((p) => p.model === m && p.user);
-    if (kids.length > best.n) best = { n: kids.length, a: kids.every((p) => p.anchored) };
+// ---------- квест: те же задания, что в уроке ----------
+// 0 мост падает → 1 Anchor и пройти по мосту → 2 долететь до мастерской → 3 собрать одну вещь своего уровня 🏁 → 4 сохранение.
+// 5 — ⭐ Звёздная тропа (по желанию). Любой этап можно открыть с карты: мир собирается так, будто прошлые этапы пройдены.
+const mark = (b) => (b ? "✅" : "⬜");
+function bestObj() {
+  let best = null;
+  for (const key of Object.keys(OBJS)) {
+    const st = objState(key), score = st.ok / st.n + (st.grouped ? 0.5 : 0) + (st.anchored ? 0.25 : 0);
+    if (!best || score > best.score) best = { key, st, score };
   }
   return best;
 }
-const mark = (b) => (b ? "✅" : "⬜");
+const objProgress = (key, st) => `${key === "path" ? "" : L.q.obj[key] + ": "}${fmt(L.q.parts)} ${st.ok}/${st.n} · ${mark(st.grouped)} ${L.ui.group} · ${mark(st.grouped && st.anchored)} ${L.ui.anchor}`;
 const STAGES = [
-  { img: "hello", look: [V(-30, 15, 26), V(0, 0, 0)], check: (ev) => ev === "focus" && selected.some((p) => p.tag === "star") },
   { img: "alarm", look: [V(-30, 15, 26), V(0, 0, 0)], setup() { $("btnPlay").classList.add("pulse"); }, check: (ev) => ev === "stop" && lastFell > 0 },
   { img: "think", glow: ["anchor"], look: [V(-30, 15, 26), V(0, 0, 0)], check: (ev) => ev === "reach" && fixed.bridge() },
-  { img: "think", glow: ["move"], look: [V(13, 11, 6), V(23, 5, -11)], check: () => fixed.lamp() },
-  { img: "think", glow: ["rotate"], look: [V(33, 7, 3), V(34, 4.5, -12)], check: () => fixed.sign() },
-  { img: "think", glow: ["scale"], look: [V(40, 8, 2), V(46, 1.5, -12)], check: () => fixed.bench() },
-  { img: "think", glow: ["group", "anchor"], look: [V(13, 11, 6), V(22, 5, -12)],
-    progress: () => `${mark(lampGrouped())} ${L.ui.group}   ${mark(lampGrouped() && lampAnchored())} ${L.ui.anchor}   ⬜ Play`,
-    check: (ev) => ev === "play" && lampGrouped() && lampAnchored() },
+  { img: "hello", look: [V(-34, 12, 20), V(-10, 2, 0)], check: (ev) => ev === "focus" && selected.some((p) => p.folder === "Workshop") },
+  { img: "think", glow: ["move", "rotate", "scale", "group", "anchor"], look: [V(36, 15, 10), V(36, 1, -12)],
+    progress() { const b = bestObj(); return objProgress(b.key, b.st); },
+    check: (ev) => ev === "play" && Object.keys(OBJS).some((k) => fixedAll(objState(k))) },
   { img: "think", look: [V(0, 26, 34), V(36, 0, -6)], setup() { fileFlags.file = fileFlags.roblox = false; },
     progress: () => `${mark(fileFlags.file)} ${L.ui.saveFile}   ${mark(fileFlags.roblox)} ${L.ui.saveRoblox}`,
     check: () => fileFlags.file && fileFlags.roblox },
-  { img: "hello", glow: ["part", "group", "anchor"], look: [V(OWN.x - 6, 11, OWN.z + 20), V(OWN.x, 1, OWN.z)],
-    progress() { const o = ownModel(); return fmt(L.q.stages[8].progress).replace("{n}", Math.min(o.n, 5)).replace("{a}", mark(o.n >= 5 && o.a)); },
-    check: () => { const o = ownModel(); return o.n >= 5 && o.a; } },
+  { img: "hello", glow: ["move", "rotate", "scale", "group", "anchor"], look: [V(74, 20, 28), V(36, 1, 34)],
+    progress: () => objProgress("path", objState("path")),
+    check: (ev) => ev === "star" && fixedAll(objState("path")) },
 ];
-const MAIN = 8; // этапы 0–7 — основной путь, 8 — ⭐
+const MAIN = 5; // этапы 0–4 — основной путь, 5 — ⭐
 let cur = 0, stageDone = false, hintN = 0;
 const fmt = (s) => s.replace(/\{(\w+)\}/g, (m, k) => L.ui[k] ?? m);
 
@@ -1088,7 +1129,7 @@ function renderProgress() {
   el.textContent = t;
   el.style.display = t && !stageDone ? "block" : "none";
 }
-const stepLabel = (i) => (i >= MAIN ? "⭐" : L.q.stageOf.replace("{n}", i + 1).replace("{m}", MAIN));
+const stepLabel = (i) => (i >= MAIN ? L.q.bonus : L.q.stageOf.replace("{n}", i + 1).replace("{m}", MAIN));
 function renderQuest() {
   const s = STAGES[cur], q = L.q, st = q.stages[cur];
   $("qChapter").textContent = q.title;
@@ -1116,7 +1157,7 @@ function renderQuest() {
 function renderStatus() { $("status").textContent = playing ? L.q.helpPlay : L.q.help; }
 $("hintBtn").onclick = () => { hintN++; renderQuest(); };
 $("nextBtn").onclick = () => startStage(cur + 1);
-$("restartBtn").onclick = () => { if (cur === MAIN) store.own = null; startStage(cur); };
+$("restartBtn").onclick = () => startStage(cur);
 
 // карта: все этапы открыты, пройденные отмечены звёздочкой
 function renderMap() {
@@ -1129,7 +1170,7 @@ function renderMap() {
   $("resetBtn").textContent = resetArmed ? q.resetSure : q.resetAll;
   $("isles1").innerHTML = STAGES.map((s, i) => {
     const done = store.done.includes(i);
-    return `<div class="isle ${done ? "done" : ""} ${i === cur ? "cur" : ""}" data-i="${i}"><b>${done ? "★" : i >= MAIN ? "⭐" : i + 1}</b>${fmt(q.stages[i].t)}</div>`;
+    return `<div class="isle ${done ? "done" : ""} ${i === cur ? "cur" : ""}" data-i="${i}"><b>${done ? "★" : i >= MAIN ? "+" : i + 1}</b>${fmt(q.stages[i].t)}</div>`;
   }).join("");
 }
 $("mapBtn").onclick = () => { renderMap(); $("map").style.display = "grid"; };
@@ -1147,7 +1188,7 @@ let resetArmed = false, resetT = 0;
 $("resetBtn").onclick = () => {
   if (!resetArmed) { resetArmed = true; renderMap(); clearTimeout(resetT); resetT = setTimeout(() => { resetArmed = false; renderMap(); }, 4000); return; }
   try { localStorage.removeItem(KEY); } catch (e) { /* нет хранилища */ }
-  store = { done: [], stage: 0, own: null };
+  store = { done: [], stage: 0 };
   resetArmed = false;
   $("map").style.display = "none";
   startStage(0);
@@ -1211,4 +1252,4 @@ if (store.done.includes(startAt) && startAt < MAIN - 1) startAt = STAGES.findInd
 if (startAt < 0) startAt = MAIN - 1;
 startStage(startAt);
 frame();
-window.__wb = { camera, tick(n) { for (let i = 0; i < n; i++) if (playing) stepPlay(1 / 60); }, keys, get charPos() { return char && char.group.position.toArray().map(r2); }, parts, get state() { return { cur, stageDone, parts: parts.length, playing, done: store.done }; }, startStage, emit, select, insert, play, stop, partsRef: () => parts, setTool, toggleAnchor, groupSel, byTag, syncMesh, fixed };
+window.__wb = { camera, tick(n) { for (let i = 0; i < n; i++) if (playing) stepPlay(1 / 60); }, keys, get charPos() { return char && char.group.position.toArray().map(r2); }, parts, get state() { return { cur, stageDone, parts: parts.length, playing, done: store.done }; }, startStage, emit, select, insert, play, stop, partsRef: () => parts, setTool, toggleAnchor, groupSel, byTag, syncMesh, fixed, objState, objParts, get char() { return char; }, setYaw(v) { camYaw = v; } };
