@@ -1,6 +1,6 @@
 // Мастерская Бита — тренажёр Roblox Studio для урока М1У1.
-// Задание 1 — собрать одну вещь мастерской (Move, Rotate, Scale, Group, Anchor) и проверить в Play.
-// Задание 2 — по желанию: собрать остальные вещи, тропу и звёзды. Мир сохраняется в браузере.
+// Вводные задания: Play и Stop (мост падает), Anchor и пройти по мосту, долететь до мастерской.
+// Потом собрать одну вещь мастерской и проверить в Play; дальше по желанию — остальные вещи, тропа и звёзды. Мир сохраняется.
 import * as THREE from "three";
 import { TransformControls } from "three/addons/controls/TransformControls.js";
 import { ConvexGeometry } from "three/addons/geometries/ConvexGeometry.js";
@@ -17,8 +17,8 @@ const navLang = (navigator.language || "").slice(0, 2).toLowerCase();
 let lang = LANGS.includes(params.get("lang")) ? params.get("lang") : LANGS.includes(navLang) ? navLang : "en";
 let L = T(lang);
 
-const KEY = "bitWorkshop.v4"; // v1–v3 — прежние квесты, их прогресс не подходит
-let store = { v: 4, task1: false, stars: [], parts: null };
+const KEY = "bitWorkshop.v5"; // v1–v4 — прежние версии, их прогресс не подходит
+let store = { v: 5, task: 0, stars: [], parts: null };
 try { Object.assign(store, JSON.parse(localStorage.getItem(KEY)) || {}); } catch (e) { /* без хранилища тоже работает */ }
 if (!Array.isArray(store.stars)) store.stars = [];
 function saveStore() { try { localStorage.setItem(KEY, JSON.stringify(store)); } catch (e) { /* приватное окно */ } }
@@ -325,7 +325,7 @@ function glitchPixels(cx, cy, cz, n = 10, spread = 2.5, key = "holes") {
 }
 
 // ---------- мир: Хаб, мост и мастерская Бита ----------
-// Один мир на весь тренажёр, он сохраняется. Мост уже цел — его чинят в уроке (карточки 02–03), тренажёр его не раскрывает.
+// Один мир на весь тренажёр, он сохраняется. Сначала вводные задания (Play и Stop, мост и Anchor, камера), потом стройка.
 // В мастерской — те же вещи, что на острове урока: 🟢 фонарь и указатель, 🟡 колодец и ворота (со светящимся контуром),
 // 🔴 тележка (по маленькому образцу рядом) и ⭐ тропа к островку со звездой. По острову разбросаны звёзды — их собирают в Play.
 // Деталь: собранный вид (size, pos, rot) и start — где и как она лежит сейчас. locked — стоит на месте.
@@ -430,11 +430,8 @@ function buildWorld() {
     post.position.set(s * 10.6, 1.75, z);
     addStatic(post);
   }
-  for (let i = 0; i < 10; i++) { // мост цел: его чинят в уроке
-    const plank = new THREE.Mesh(new THREE.BoxGeometry(1.9, 0.6, 6), makeMat({ color: "#9c6a3c", material: "WoodPlanks", size: [1.9, 0.6, 6] }));
-    plank.position.set(-9 + i * 2, -0.3, 0);
-    addStatic(plank);
-  }
+  for (let i = 0; i < 10; i++) addPart({ name: "Plank", model: "Bridge", key: `bridge:${i}`, size: [1.9, 0.6, 6], pos: [-9 + i * 2, -0.3, 0], color: "#9c6a3c", material: "WoodPlanks" });
+
   const stone = sm("#9aa0a8", { flatShading: true });
   for (const z of [-6, 6]) { const pl = new THREE.Mesh(new THREE.BoxGeometry(2, 11, 2), stone); pl.position.set(-52, 5.5, z); addStatic(pl); }
   const beam = new THREE.Mesh(new THREE.BoxGeometry(2.4, 2.2, 14), stone);
@@ -483,6 +480,7 @@ function buildWorld() {
     animators.push((t) => { m.rotation.y = t * 1.6 + ph; m.position.y = s.pos[1] + Math.sin(t * 2 + ph) * 0.25; m.visible = !store.stars.includes(s.id); });
     return m;
   });
+  glitchPixels(0, 0.4, 0, 9, 4, "bridge");
   for (const key of OBJ_KEYS) if (OBJS[key].pad) glitchPixels(OBJS[key].pad[0], 2, OBJS[key].pad[1], 6, 2.5, key);
   glitchPixels(40, 1.5, 32, 7, 3, "path");
 }
@@ -516,7 +514,8 @@ function objState(key) {
 }
 const fixedAll = (st) => st.ok === st.n && st.grouped && st.anchored;
 const builtKeys = () => OBJ_KEYS.filter((k) => fixedAll(objState(k)));
-function updateCalm() { for (const k of OBJ_KEYS) { const st = objState(k); calm[k] = st.ok === st.n; } }
+const bridgeFixed = () => parts.filter((p) => p.model === "Bridge").every((p) => p.anchored);
+function updateCalm() { calm.bridge = bridgeFixed(); for (const k of OBJ_KEYS) { const st = objState(k); calm[k] = st.ok === st.n; } }
 function lightPortal() {
   calm.portal = true;
   portalMat.emissive.set("#5ff3ff");
@@ -829,6 +828,7 @@ function stepPlay(dt) {
   if (top > -Infinity && g.position.y + dy <= top) { dy = top - g.position.y; c.vy = 0; c.grounded = true; }
   g.position.y += dy;
   if (g.position.y < -90) { g.position.copy(world.spawn); c.vy = 0; }
+  if (c.grounded && g.position.x > 13 && !c.reached) { c.reached = true; emit("reach"); }
   collectStars(g.position);
   // камера за спиной
   const target = g.position.clone().add(V(0, 4, 0));
@@ -938,7 +938,7 @@ function buildRibbon() {
   renderRibbonState();
 }
 // ---------- окна и узкий экран ----------
-const panes = { explorer: true, properties: true };
+const panes = { explorer: false, properties: false }; // закрыты, чтобы не мешали; открываются кнопками на ленте
 function applyPanes() {
   document.body.classList.toggle("noExp", !panes.explorer);
   document.body.classList.toggle("noProps", !panes.properties);
@@ -1122,8 +1122,7 @@ $("props").addEventListener("change", (e) => {
   });
 });
 // ---------- задания ----------
-// Задание 1 — собрать одну вещь и проверить в Play (как 🏁 урока). Задание 2 — по желанию: застроить мастерскую и собрать звёзды.
-// Каждая постройка и каждая звезда засчитываются в счётчике справа вверху.
+// Задания — см. TASKS ниже. Каждая постройка и каждая звезда засчитываются в счётчике справа вверху (видно со стройки).
 const mark = (b) => (b ? "✅" : "⬜");
 const fmt = (s) => s.replace(/\{(\w+)\}/g, (m, k) => L.ui[k] ?? m);
 let hintN = 0, lastBuilt = -1;
@@ -1138,56 +1137,77 @@ function bestObj() {
   return best;
 }
 const objProgress = (key, st) => `${L.q.obj[key]}: ${L.q.parts} ${st.ok}/${st.n} · ${mark(st.grouped)} ${L.ui.group} · ${mark(st.grouped && st.anchored)} ${L.ui.anchor}`;
-const task = () => (store.task1 ? 2 : 1);
+// 0 Play и Stop → 1 мост: Anchor и пройти → 2 долететь до мастерской → 3 собрать одну вещь 🏁 → 4 по желанию: постройки и звёзды
+const TASKS = [
+  { img: "alarm", check: (ev) => ev === "stop" && lastFell > 0, setup() { $("btnPlay").classList.add("pulse"); } },
+  { img: "think", glow: ["anchor"], check: (ev) => ev === "reach" && bridgeFixed() },
+  { img: "hello", check: (ev) => ev === "focus" && selected.some((p) => (p.folder || "").startsWith("Workshop")) },
+  { img: "think", glow: ["move", "rotate", "scale", "group", "anchor"], check: (ev) => ev === "play" && builtKeys().length > 0 },
+  { img: "hello", glow: ["move", "rotate", "scale", "group", "anchor"], check: () => false },
+];
+const LAST = TASKS.length - 1;
+let taskDone = false;
+const task = () => Math.min(store.task || 0, LAST);
 function renderScore() {
   const b = builtKeys().length;
+  $("score").style.display = task() >= 3 ? "flex" : "none"; // счётчик — когда дошли до стройки
   $("score").innerHTML = `<span title="${L.q.built}">🏗 ${b}/${OBJ_KEYS.length}</span><span title="${L.q.starsLbl}">⭐ ${store.stars.length}/${STARS.length}</span>`;
-  if (b !== lastBuilt) { if (lastBuilt >= 0 && b > lastBuilt) toast(L.q.builtToast.replace("{n}", b)); lastBuilt = b; }
+  if (b !== lastBuilt) { if (lastBuilt >= 0 && b > lastBuilt && task() >= 3) toast(L.q.builtToast.replace("{n}", b)); lastBuilt = b; }
 }
 function setBitImg(n) { $("qImg").src = `img/bit_${n}.jpg`; }
 function renderProgress() {
   const el = $("qProg");
   let t = "";
-  if (task() === 1) { const b = bestObj(); t = b ? objProgress(b.key, b.st) : ""; if (builtKeys().length) t = `✅ ${L.q.readyPlay}`; }
-  else { const b = bestObj(); t = b && b.st.ok ? objProgress(b.key, b.st) : ""; }
+  const b = bestObj();
+  if (task() === 3 && !taskDone) t = builtKeys().length ? `✅ ${L.q.readyPlay}` : b ? objProgress(b.key, b.st) : "";
+  if (task() === 4 && b && b.st.ok) t = objProgress(b.key, b.st);
   el.textContent = t;
   el.style.display = t ? "block" : "none";
 }
 function renderQuest() {
-  const q = L.q, n = task(), st = q.tasks[n - 1];
+  const q = L.q, n = task(), st = q.tasks[n];
   $("qChapter").textContent = q.title;
-  $("qStep").textContent = n === 1 ? q.taskOf.replace("{n}", 1) : q.optional;
+  $("qStep").textContent = n === LAST ? q.optional : q.taskOf.replace("{n}", n + 1).replace("{m}", LAST);
   $("qTitle").textContent = fmt(st.t);
   $("qText").textContent = fmt(st.task);
-  setBitImg(n === 1 ? "think" : "hello");
-  $("qHint").style.display = hintN ? "block" : "none";
+  setBitImg(taskDone ? "proud" : TASKS[n].img);
+  $("qHint").style.display = hintN && !taskDone ? "block" : "none";
   $("qHint").textContent = hintN ? st.hints.slice(0, hintN).map(fmt).join(" ") : "";
-  $("qDone").style.display = "none";
+  $("qDone").style.display = taskDone ? "block" : "none";
+  $("qDone").textContent = taskDone ? "✅ " + fmt(st.done) : "";
   $("qBack").textContent = q.back;
   $("qPillText").textContent = fmt(st.t);
   $("hintBtn").textContent = q.hint;
-  $("hintBtn").style.display = hintN >= st.hints.length ? "none" : "";
+  $("hintBtn").style.display = taskDone || hintN >= st.hints.length ? "none" : "";
   $("mapBtn").textContent = "↗ " + q.newTab;
   $("restartBtn").textContent = resetArmed ? q.resetSure : q.resetAll;
   $("restartBtn").classList.toggle("danger", resetArmed);
-  $("nextBtn").style.display = "none";
+  $("nextBtn").style.display = taskDone && n < LAST ? "" : "none";
+  $("nextBtn").textContent = `${q.next} →`;
   for (const b of document.querySelectorAll(".rb.glow")) b.classList.remove("glow");
-  if (hintN >= 2) for (const g of ["move", "rotate", "scale", "group", "anchor"]) $("rb_" + g)?.classList.add("glow");
+  if (hintN >= 2 && !taskDone) for (const g of TASKS[n].glow || []) $("rb_" + g)?.classList.add("glow");
+  if (hintN >= 1 && !taskDone && n <= 1) $("btnPlay").classList.add("pulse");
   renderProgress();
   renderScore();
 }
 function renderStatus() { $("status").textContent = playing ? L.q.helpPlay : L.q.help; }
 function emit(ev) {
-  if (ev === "play" && !store.task1 && builtKeys().length) {
-    store.task1 = true; saveStore();
-    hintN = 0;
-    setTimeout(() => { $("finalTitle").textContent = L.q.finalTitle; $("finalText").textContent = L.q.final; $("final").style.display = "grid"; }, 1200);
+  if (!taskDone && TASKS[task()].check(ev)) {
+    taskDone = true; hintN = 0;
+    $("btnPlay").classList.remove("pulse");
+    if (task() === 3) setTimeout(() => { $("finalTitle").textContent = L.q.finalTitle; $("finalText").textContent = L.q.final; $("final").style.display = "grid"; }, 1200);
     renderQuest();
     return;
   }
   renderProgress();
   renderScore();
 }
+$("nextBtn").onclick = () => {
+  store.task = task() + 1; saveStore();
+  taskDone = false; hintN = 0;
+  TASKS[task()].setup?.();
+  renderQuest();
+};
 // звёзды собирают в Play, подойдя вплотную
 function collectStars(pos) {
   for (const s of STARS) {
@@ -1218,7 +1238,7 @@ let resetArmed = false, resetT = 0;
 $("restartBtn").onclick = () => {
   if (!resetArmed) { resetArmed = true; renderQuest(); clearTimeout(resetT); resetT = setTimeout(() => { resetArmed = false; renderQuest(); }, 4000); return; }
   resetArmed = false;
-  store = { v: 4, task1: false, stars: [], parts: null };
+  store = { v: 5, task: 0, stars: [], parts: null };
   saveStore();
   startWorld();
 };
@@ -1278,8 +1298,10 @@ function startWorld(keepCamera = false) {
   loadWorld();
   updateCalm();
   lastBuilt = -1;
-  if (cam) setLook(...cam); else setLook(V(-6, 26, 34), V(36, 0, -2));
+  if (cam) setLook(...cam); else if (task() < 3) setLook(V(-30, 15, 26), V(0, 0, 0)); else setLook(V(-6, 26, 34), V(36, 0, -2));
   tool = "select";
+  taskDone = false;
+  TASKS[task()].setup?.();
   refreshSel();
   renderQuest();
   renderStatus();
@@ -1306,4 +1328,4 @@ resize();
 applyLang();
 startWorld();
 frame();
-window.__wb = { camera, tick(n) { for (let i = 0; i < n; i++) if (playing) stepPlay(1 / 60); }, keys, get charPos() { return char && char.group.position.toArray().map(r2); }, get store() { return store; }, emit, select, insert, play, stop, partsRef: () => parts, setTool, toggleAnchor, groupSel, syncMesh, objState, objParts, builtKeys, progressUrl, startWorld, OBJS, get char() { return char; }, setYaw(v) { camYaw = v; } };
+window.__wb = { camera, tick(n) { for (let i = 0; i < n; i++) if (playing) stepPlay(1 / 60); }, keys, get charPos() { return char && char.group.position.toArray().map(r2); }, get store() { return store; }, get taskDone() { return taskDone; }, emit, select, insert, play, stop, partsRef: () => parts, setTool, toggleAnchor, groupSel, syncMesh, objState, objParts, builtKeys, progressUrl, startWorld, OBJS, get char() { return char; }, setYaw(v) { camYaw = v; } };
